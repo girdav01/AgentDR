@@ -1,0 +1,132 @@
+generator client {
+    provider = "prisma-client-js"
+    binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+    output = "/home/ubuntu/adr_dashboard/nextjs_space/node_modules/.prisma/client"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id            String   @id @default(cuid())
+  name          String
+  slug          String   @unique
+  plan          String   @default("individual")  // individual, team, enterprise
+  settings      String?  @db.Text                // JSON: org-level settings
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  users         User[]
+  policies      Policy[]
+  storageConfig StorageConfig?
+}
+
+model User {
+  id            String        @id @default(cuid())
+  name          String?
+  email         String        @unique
+  password      String
+  role          String        @default("analyst")  // owner, admin, analyst, viewer
+  orgId         String?
+  org           Organization? @relation(fields: [orgId], references: [id])
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([orgId])
+}
+
+model Event {
+  id            String   @id @default(cuid())
+  timestamp     DateTime
+  eventType     String
+  details       String   @db.Text
+  riskLevel     String
+  agentDetected String?
+  source        String?
+  tags          String?  @db.Text
+  orgId         String?       // Scope to organization (null = personal)
+  // AITF OCSF Category 7 fields
+  classUid      Int?          // OCSF class_uid (7001-7010)
+  typeUid       Int?          // OCSF type_uid (e.g., 700101)
+  activityId    Int?          // OCSF activity_id
+  severityId    Int?          // OCSF severity_id (0-6)
+  statusId      Int?          // OCSF status_id
+  message       String?       @db.Text
+  provider      String?       // AI provider name (openai, anthropic, etc.)
+  model         String?       // AI model used
+  agentName     String?       // Agent name
+  agentFramework String?      // Agent framework (langchain, crewai, etc.)
+  toolName      String?       // Tool/skill name
+  mcpServer     String?       // MCP server name
+  actor         String?       @db.Text  // JSON: actor info
+  compliance    String?       @db.Text  // JSON: compliance framework mappings
+  securityFinding String?     @db.Text  // JSON: security finding details
+  tokenUsage    String?       @db.Text  // JSON: token usage stats
+  costInfo      String?       @db.Text  // JSON: cost information
+  traceId       String?       // OpenTelemetry trace ID
+  spanId        String?       // OpenTelemetry span ID
+  createdAt     DateTime @default(now())
+
+  @@index([timestamp])
+  @@index([eventType])
+  @@index([riskLevel])
+  @@index([agentDetected])
+  @@index([classUid])
+  @@index([provider])
+  @@index([orgId])
+}
+
+model Alert {
+  id            String   @id @default(cuid())
+  timestamp     DateTime
+  alertType     String
+  severity      String
+  description   String   @db.Text
+  details       String?  @db.Text
+  resolved      Boolean  @default(false)
+  eventId       String?
+  orgId         String?       // Scope to organization (null = personal)
+  // AITF detection rule fields
+  ruleId        String?       // AITF detection rule ID (e.g., AITF-DET-003)
+  owaspCategory String?       // OWASP mapping (e.g., LLM01)
+  classUid      Int?          // Related OCSF class_uid
+  complianceRef String?       @db.Text  // JSON: compliance references
+  createdAt     DateTime @default(now())
+
+  @@index([timestamp])
+  @@index([severity])
+  @@index([ruleId])
+  @@index([orgId])
+}
+
+model Policy {
+  id            String        @id @default(cuid())
+  name          String
+  ruleId        String        // AITF-DET-xxx
+  enabled       Boolean       @default(true)
+  severity      String        @default("medium")  // low, medium, high, critical
+  threshold     String?       @db.Text             // JSON: rule thresholds & parameters
+  action        String        @default("alert")    // alert, block, log
+  orgId         String?
+  org           Organization? @relation(fields: [orgId], references: [id])
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@unique([ruleId, orgId])
+  @@index([orgId])
+}
+
+model StorageConfig {
+  id              String        @id @default(cuid())
+  retentionDays   Int           @default(90)
+  maxStorageMb    Int           @default(5000)
+  archiveEnabled  Boolean       @default(false)
+  archiveAfterDays Int          @default(30)
+  exportFormat    String        @default("jsonl")    // jsonl, csv, parquet
+  autoCleanup     Boolean       @default(true)
+  orgId           String?       @unique
+  org             Organization? @relation(fields: [orgId], references: [id])
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
