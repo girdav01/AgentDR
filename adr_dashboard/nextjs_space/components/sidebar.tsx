@@ -7,13 +7,15 @@ import { useState } from 'react';
 import {
   Shield, LayoutDashboard, Activity, ScrollText, BarChart3,
   AlertTriangle, Menu, X, LogOut, ChevronLeft, User,
-  ShieldCheck, Settings,
+  ShieldCheck, Settings, GitBranch, Brain,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
   { href: '/activity', label: 'Live Feed', icon: Activity },
+  { href: '/sessions', label: 'Sessions', icon: GitBranch },
+  { href: '/ueba', label: 'UEBA Baselines', icon: Brain },
   { href: '/logs', label: 'Event Logs', icon: ScrollText },
   { href: '/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/alerts', label: 'Alerts', icon: AlertTriangle },

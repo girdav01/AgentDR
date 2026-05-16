@@ -24,7 +24,7 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    policies: policies.map(p => ({
+    policies: policies.map((p: any) => ({
       ...p,
       threshold: p.threshold ? JSON.parse(p.threshold) : {},
     })),

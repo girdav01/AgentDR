@@ -8,6 +8,7 @@
 mod config;
 mod detectors;
 mod engine;
+mod exporters;
 mod hooks;
 mod ingest;
 mod integrity;
