@@ -2,6 +2,8 @@
 
 use crate::config::Config;
 use crate::detectors::PatternDetector;
+use crate::ingest::otlp::{self, OtlpSink};
+use crate::mcp;
 use crate::models::*;
 use crate::monitors::{file::FileMonitor, network::NetworkMonitor, process::ProcessMonitor};
 use crate::storage::{EventPusher, JsonlStore};
@@ -9,6 +11,7 @@ use serde_json::json;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
+use tokio::time::{interval, Duration};
 use tracing::info;
 
 pub struct AgentEngine {
@@ -79,6 +82,48 @@ impl AgentEngine {
         tokio::spawn(async move {
             NetworkMonitor::new(net_poll, ai_eps, net_tx).run(net_shutdown).await;
         });
+
+        // ── Tier 1: OTLP ingest server ──
+        if self.config.otlp.enabled {
+            let otlp_tx = event_tx.clone();
+            let otlp_shutdown = shutdown_rx.clone();
+            let bind = self.config.otlp.bind.clone();
+            let max = self.config.otlp.max_body_bytes;
+            let redact = self.config.otlp.redact_content;
+            tokio::spawn(async move {
+                let sink = OtlpSink::new(otlp_tx, redact);
+                otlp::serve(&bind, max, sink, otlp_shutdown).await;
+            });
+        }
+
+        // ── Tier 1: MCP inventory (one-shot + optional periodic re-scan) ──
+        if self.config.mcp.inventory_on_start {
+            let mcp_tx = event_tx.clone();
+            tokio::spawn(async move {
+                let report = mcp::inventory::scan();
+                for ev in report.events {
+                    let _ = mcp_tx.send(ev);
+                }
+            });
+        }
+        if self.config.mcp.rescan_seconds > 0 {
+            let mcp_tx = event_tx.clone();
+            let mut mcp_shutdown = shutdown_rx.clone();
+            let period = self.config.mcp.rescan_seconds;
+            tokio::spawn(async move {
+                let mut ticker = interval(Duration::from_secs(period));
+                ticker.tick().await; // skip immediate tick (covered by inventory_on_start)
+                loop {
+                    tokio::select! {
+                        _ = ticker.tick() => {
+                            let report = mcp::inventory::scan();
+                            for ev in report.events { let _ = mcp_tx.send(ev); }
+                        }
+                        _ = mcp_shutdown.changed() => { break; }
+                    }
+                }
+            });
+        }
 
         // Emit start event
         let start_event = {

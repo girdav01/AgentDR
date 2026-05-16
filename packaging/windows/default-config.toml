@@ -1,0 +1,17 @@
+# AgentDR default Windows config. Operators may edit
+# C:\ProgramData\AgentDR\config.toml; subsequent MSI upgrades preserve edits
+# (NeverOverwrite="yes").
+watch_directories = ["C:\\Users"]
+
+[otlp]
+enabled = true
+bind = "127.0.0.1:4318"
+redact_content = true
+
+[mcp]
+inventory_on_start = true
+rescan_seconds = 600
+
+[server_push]
+enabled = false
+endpoint = ""

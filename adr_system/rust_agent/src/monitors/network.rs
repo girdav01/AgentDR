@@ -59,7 +59,7 @@ impl NetworkMonitor {
                 let (risk, class_uid, activity_id, event_type, msg) = if let Some(ref ai) = ai_info {
                     ("medium", CLASS_LLM_INFERENCE, ACTIVITY_EXECUTE, "network_request",
                      format!("AI API request to {} ({})", host, ai.provider))
-                } else if let Some(platform) = messaging {
+                } else if let Some(ref platform) = messaging {
                     ("high", CLASS_PERMISSION_ESCALATION, ACTIVITY_EXECUTE, "messaging_channel_access",
                      format!("Agent accessing {} via {}", platform, host))
                 } else {
