@@ -276,12 +276,19 @@ fn span_to_event(span: &Value, resource: &Attrs, redact: bool) -> Option<EventRe
     let tool_name = combined.get("gen_ai.tool.name").cloned();
     let is_mcp = span_name.to_lowercase().contains("mcp")
         || combined.keys().any(|k| k.starts_with("mcp."));
+    // Tier 5 — approval flow: any span with gen_ai.approval.* or
+    // gen_ai.policy.* attributes is treated as a Permission Escalation
+    // (class_uid 7007) event so analysts can review approve/deny actions
+    // a user took inside a coding agent.
+    let is_approval = combined.keys().any(|k| k.starts_with("gen_ai.approval.") || k.starts_with("gen_ai.policy."));
 
-    if gen_ai_system.is_none() && tool_name.is_none() && !is_mcp {
+    if gen_ai_system.is_none() && tool_name.is_none() && !is_mcp && !is_approval {
         return None;
     }
 
-    let (class_uid, activity_id, event_type) = if tool_name.is_some() {
+    let (class_uid, activity_id, event_type) = if is_approval {
+        (CLASS_PERMISSION_ESCALATION, ACTIVITY_DETECT, "gen_ai.approval")
+    } else if tool_name.is_some() {
         (CLASS_TOOL_EXECUTION, ACTIVITY_EXECUTE, "gen_ai.tool")
     } else if is_mcp {
         (CLASS_MCP_OPERATION, ACTIVITY_EXECUTE, "gen_ai.mcp")
@@ -304,6 +311,29 @@ fn span_to_event(span: &Value, resource: &Attrs, redact: bool) -> Option<EventRe
     apply_common_attrs(&mut ev, &combined, redact);
     if let Some(tn) = tool_name {
         ev.tool_name = Some(tn);
+    }
+    if is_approval {
+        // Lift the approval decision onto the top-level event for easy filtering.
+        let decision = combined.get("gen_ai.approval.decision").cloned();
+        let actor    = combined.get("gen_ai.approval.actor").cloned();
+        let scope    = combined.get("gen_ai.approval.scope").cloned();
+        let reason   = combined.get("gen_ai.approval.reason").cloned();
+        ev.details = json!({
+            "decision": decision,  // typically "allow"|"deny"|"defer"
+            "actor":    actor,
+            "scope":    scope,
+            "reason":   reason,
+        });
+        if decision.as_deref() == Some("deny") {
+            ev.risk_level = "high".into();
+            ev.severity_id = Some(4);
+            ev.status_id   = Some(STATUS_BLOCKED);
+        }
+        ev.message = Some(format!(
+            "approval {}{}",
+            decision.unwrap_or_else(|| "(unknown)".into()),
+            scope.map(|s| format!(" — {}", s)).unwrap_or_default()
+        ));
     }
     if let Some(t) = trace_id_hex {
         ev.trace_id = t;

@@ -6,7 +6,12 @@ use crate::exporters;
 use crate::ingest::otlp::{self, OtlpSink};
 use crate::mcp;
 use crate::models::*;
-use crate::monitors::{file::FileMonitor, network::NetworkMonitor, process::ProcessMonitor};
+use crate::monitors::{
+    browser::BrowserMonitor, file::FileMonitor, kernel::KernelMonitor,
+    network::NetworkMonitor, process::ProcessMonitor,
+};
+use crate::policy::PolicyEngine;
+use crate::proxy::InlineProxy;
 use crate::storage::{EventPusher, JsonlStore};
 use serde_json::json;
 use std::path::PathBuf;
@@ -64,6 +69,26 @@ impl AgentEngine {
             info!("vendor exporters active: {:?}", active);
         }
 
+        // ── Tier 5: load the policy pack ──
+        let policy_engine = Arc::new(if self.config.policy.enabled {
+            if !self.config.policy.path.is_empty() {
+                match PolicyEngine::load_from(std::path::Path::new(&self.config.policy.path)) {
+                    Ok(e) => { info!("policy: loaded {} rule(s) from {}", e.len(), e.source().display()); e }
+                    Err(err) => { tracing::warn!("policy: {err}"); PolicyEngine::empty() }
+                }
+            } else {
+                let e = PolicyEngine::load_default();
+                if e.is_empty() {
+                    tracing::warn!("policy: no policy pack found (looked under cosai-community/policies/)");
+                } else {
+                    info!("policy: loaded {} rule(s) from {}", e.len(), e.source().display());
+                }
+                e
+            }
+        } else {
+            PolicyEngine::empty()
+        });
+
         // Spawn process monitor
         let proc_tx = event_tx.clone();
         let proc_shutdown = shutdown_rx.clone();
@@ -102,6 +127,39 @@ impl AgentEngine {
             tokio::spawn(async move {
                 let sink = OtlpSink::new(otlp_tx, redact);
                 otlp::serve(&bind, max, sink, otlp_shutdown).await;
+            });
+        }
+
+        // ── Tier 5: inline blocking proxy ──
+        if self.config.proxy.enabled {
+            let proxy_tx = event_tx.clone();
+            let proxy_shutdown = shutdown_rx.clone();
+            let bind = self.config.proxy.bind.clone();
+            let allow = self.config.proxy.allowlist.clone();
+            let engine = policy_engine.clone();
+            tokio::spawn(async move {
+                InlineProxy::new(bind, engine, allow, proxy_tx).run(proxy_shutdown).await;
+            });
+        }
+
+        // ── Tier 6: kernel-level telemetry ──
+        if self.config.kernel.enabled {
+            let kern_tx = event_tx.clone();
+            let kern_shutdown = shutdown_rx.clone();
+            let group = self.config.kernel.audit_multicast_group;
+            tokio::spawn(async move {
+                KernelMonitor::new(group, kern_tx).run(kern_shutdown).await;
+            });
+        }
+
+        // ── Tier 6: browser CDP monitor ──
+        if self.config.browser.enabled {
+            let br_tx = event_tx.clone();
+            let br_shutdown = shutdown_rx.clone();
+            let ep = self.config.browser.cdp_endpoint.clone();
+            let poll = self.config.browser.poll_seconds;
+            tokio::spawn(async move {
+                BrowserMonitor::new(ep, poll, br_tx).run(br_shutdown).await;
             });
         }
 
@@ -187,6 +245,17 @@ impl AgentEngine {
                         let _ = bus_tx.send(alert.clone());
                         if stream {
                             Self::print_event(&alert);
+                        }
+                    }
+
+                    // ── Tier 5: policy evaluation ──
+                    if !policy_engine.is_empty() {
+                        let decision = policy_engine.evaluate(&event);
+                        for pol_ev in decision.events {
+                            store.write_event(&pol_ev);
+                            let _ = push_tx.send(pol_ev.clone());
+                            let _ = bus_tx.send(pol_ev.clone());
+                            if stream { Self::print_event(&pol_ev); }
                         }
                     }
                 }

@@ -37,7 +37,93 @@ pub struct Config {
 
     #[serde(default)]
     pub exporters: ExportersConfig,
+
+    #[serde(default)]
+    pub policy: PolicyConfig,
+
+    #[serde(default)]
+    pub proxy: ProxyConfig,
+
+    #[serde(default)]
+    pub kernel: KernelConfig,
+
+    #[serde(default)]
+    pub browser: BrowserConfig,
 }
+
+// ── Tier 5 policy + inline proxy ───────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PolicyConfig {
+    /// Load and evaluate policies against each event.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Optional override path. When empty, the agent searches
+    /// `<exe>/../cosai-community/policies/policies.yaml`, then
+    /// `cosai-community/policies/policies.yaml`, then `/etc/agentdr/policies.yaml`.
+    #[serde(default)]
+    pub path: String,
+}
+impl Default for PolicyConfig {
+    fn default() -> Self { Self { enabled: true, path: String::new() } }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProxyConfig {
+    /// Run the inline blocking HTTP CONNECT proxy.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Bind address, e.g. 127.0.0.1:8080.
+    #[serde(default = "default_proxy_bind")]
+    pub bind: String,
+    /// Optional hostname allow-list (substring match, case-insensitive).
+    /// When empty, only the PolicyEngine decides.
+    #[serde(default)]
+    pub allowlist: Vec<String>,
+}
+impl Default for ProxyConfig {
+    fn default() -> Self {
+        Self { enabled: false, bind: default_proxy_bind(), allowlist: Vec::new() }
+    }
+}
+fn default_proxy_bind() -> String { "127.0.0.1:8080".into() }
+
+// ── Tier 6 — kernel + browser telemetry ────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KernelConfig {
+    /// Subscribe to OS-native process / file telemetry. Linux uses the
+    /// kernel audit netlink (no extra daemon required); macOS and
+    /// Windows currently emit a stub event indicating signed-binary
+    /// requirements for EndpointSecurity / ETW providers.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Linux only — netlink multicast group, default 1 (matches auditd).
+    #[serde(default = "default_audit_group")]
+    pub audit_multicast_group: u32,
+}
+impl Default for KernelConfig {
+    fn default() -> Self { Self { enabled: false, audit_multicast_group: default_audit_group() } }
+}
+fn default_audit_group() -> u32 { 1 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserConfig {
+    /// Poll Chrome / Edge DevTools Protocol for browser-use agent activity.
+    #[serde(default)]
+    pub enabled: bool,
+    /// CDP endpoint; default Chrome/Edge "remote debugging" port.
+    #[serde(default = "default_cdp_endpoint")]
+    pub cdp_endpoint: String,
+    /// Polling interval in seconds.
+    #[serde(default = "default_cdp_poll")]
+    pub poll_seconds: u64,
+}
+impl Default for BrowserConfig {
+    fn default() -> Self { Self { enabled: false, cdp_endpoint: default_cdp_endpoint(), poll_seconds: default_cdp_poll() } }
+}
+fn default_cdp_endpoint() -> String { "http://127.0.0.1:9222".into() }
+fn default_cdp_poll() -> u64 { 5 }
 
 // ── Tier 3 exporters ────────────────────────────────────────────────────
 //
@@ -531,6 +617,10 @@ impl Default for Config {
             otlp: OtlpConfig::default(),
             mcp: McpConfig::default(),
             exporters: ExportersConfig::default(),
+            policy: PolicyConfig::default(),
+            proxy: ProxyConfig::default(),
+            kernel: KernelConfig::default(),
+            browser: BrowserConfig::default(),
         }
     }
 }

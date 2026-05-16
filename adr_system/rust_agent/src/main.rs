@@ -15,6 +15,9 @@ mod integrity;
 mod mcp;
 mod models;
 mod monitors;
+mod policy;
+mod proxy;
+mod shell;
 mod storage;
 
 use clap::{Parser, Subcommand};
@@ -68,6 +71,53 @@ enum Command {
         /// Bind address (default 127.0.0.1:4318).
         #[arg(long, default_value = "127.0.0.1:4318")]
         bind: String,
+    },
+
+    /// Inspect or test the policy pack (Tier 5).
+    #[command(subcommand)]
+    Policy(PolicyCmd),
+
+    /// Record an interactive command session (Tier 6).
+    ///
+    /// Use as: adr-agent shell wrap --name claude-bash -- bash -c "<cmd>"
+    Shell {
+        #[command(subcommand)]
+        action: ShellCmd,
+    },
+
+    /// Run the inline blocking HTTP CONNECT proxy in standalone mode (Tier 5).
+    Proxy {
+        /// Bind address (default 127.0.0.1:8080).
+        #[arg(long, default_value = "127.0.0.1:8080")]
+        bind: String,
+        /// Allow-list (substring match, repeatable).
+        #[arg(long)]
+        allow: Vec<String>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum PolicyCmd {
+    /// List loaded policies as JSON.
+    List,
+    /// Evaluate the policy pack against an event read from --file or stdin.
+    Test {
+        /// Path to a JSON file containing one EventRecord. If omitted, stdin is used.
+        #[arg(long)]
+        file: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum ShellCmd {
+    /// Wrap a command, logging stdin/stdout/stderr as class_uid=7003 events.
+    Wrap {
+        /// Logical session name to record in events.
+        #[arg(long)]
+        name: String,
+        /// Command to execute (mandatory). Provide after `--`.
+        #[arg(last = true, required = true)]
+        cmd: Vec<String>,
     },
 }
 
@@ -188,6 +238,71 @@ async fn main() {
             let cfg = config::Config::load(&config_path);
             let log_path = cli.root.join(&cfg.storage.events_path);
             ingest::otlp::serve_standalone(&bind, &log_path).await;
+        }
+
+        Command::Policy(PolicyCmd::List) => {
+            let engine = policy::PolicyEngine::load_default();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "source":   engine.source().display().to_string(),
+                    "count":    engine.len(),
+                    "policies": engine.len(),
+                })).unwrap()
+            );
+        }
+        Command::Policy(PolicyCmd::Test { file }) => {
+            let raw = match file {
+                Some(p) => std::fs::read_to_string(&p).unwrap_or_default(),
+                None => {
+                    use std::io::Read;
+                    let mut s = String::new();
+                    std::io::stdin().read_to_string(&mut s).ok();
+                    s
+                }
+            };
+            let ev: models::EventRecord = match serde_json::from_str(&raw) {
+                Ok(e) => e,
+                Err(e) => { eprintln!("policy test: invalid EventRecord JSON: {e}"); std::process::exit(2); }
+            };
+            let engine = policy::PolicyEngine::load_default();
+            let decision = engine.evaluate(&ev);
+            println!("{}", serde_json::to_string_pretty(&decision).unwrap());
+            if matches!(decision.action, policy::Action::Block) {
+                std::process::exit(1);
+            }
+        }
+
+        Command::Shell { action: ShellCmd::Wrap { name, cmd } } => {
+            let cfg = config::Config::load(&config_path);
+            let log_path = cli.root.join(&cfg.storage.events_path);
+            match shell::run(&name, &cmd, &log_path).await {
+                Ok(code) => std::process::exit(code),
+                Err(e) => { eprintln!("shell wrap failed: {e}"); std::process::exit(1); }
+            }
+        }
+
+        Command::Proxy { bind, allow } => {
+            let engine = std::sync::Arc::new(policy::PolicyEngine::load_default());
+            let cfg = config::Config::load(&config_path);
+            let log_path = cli.root.join(&cfg.storage.events_path);
+            // Standalone proxy: writes JSONL directly, no engine bus.
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<models::EventRecord>();
+            let log_path_w = log_path.clone();
+            tokio::spawn(async move {
+                if let Some(parent) = log_path_w.parent() { let _ = std::fs::create_dir_all(parent); }
+                while let Some(ev) = rx.recv().await {
+                    if let Ok(line) = serde_json::to_string(&ev) {
+                        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&log_path_w) {
+                            use std::io::Write;
+                            let _ = writeln!(f, "{}", line);
+                        }
+                    }
+                }
+            });
+            let (_sd_tx, sd_rx) = tokio::sync::watch::channel(false);
+            let prx = proxy::InlineProxy::new(bind, engine, allow, tx);
+            prx.run(sd_rx).await;
         }
 
         Command::Start { quiet, watch } => {

@@ -1,13 +1,25 @@
-//! Pattern detection engine — all 20 CoSAI detection rules.
+//! Pattern detection engine — all 20 CoSAI detection rules + Tier 6
+//! credential attribution.
 
 use crate::config::DetectionConfig;
 use crate::models::*;
 use serde_json::json;
 use std::collections::VecDeque;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 type TimedEntry = (Instant, String);
 type TimedSize = (Instant, u64);
+
+/// Active agent process tracked for Tier 6 credential attribution.
+#[derive(Debug, Clone)]
+struct ActiveAgent {
+    seen_at: Instant,
+    pid: u32,
+    agent_name: String,
+    agent_framework: Option<String>,
+    user: Option<String>,
+    exe: Option<String>,
+}
 
 pub struct PatternDetector {
     cfg: DetectionConfig,
@@ -22,6 +34,12 @@ pub struct PatternDetector {
     credential_access_events: VecDeque<TimedEntry>,
     ai_api_hosts: VecDeque<TimedEntry>,
     messaging_hosts: VecDeque<TimedEntry>,
+    /// Tier 6 — running window of AI-agent processes for credential
+    /// attribution. We don't always know which PID actually read the
+    /// credential file (the file monitor on Linux/macOS doesn't carry
+    /// PIDs), so we list all live agent processes and let SOC narrow
+    /// down. The window is 10 minutes by default.
+    active_agents: VecDeque<ActiveAgent>,
 }
 
 impl PatternDetector {
@@ -37,7 +55,54 @@ impl PatternDetector {
             credential_access_events: VecDeque::new(),
             ai_api_hosts: VecDeque::new(),
             messaging_hosts: VecDeque::new(),
+            active_agents: VecDeque::new(),
         }
+    }
+
+    /// Window for credential attribution. We retain agent process events
+    /// for this long after they fire.
+    const ATTRIBUTION_WINDOW: Duration = Duration::from_secs(600);
+
+    fn record_agent_process(&mut self, event: &EventRecord) {
+        // Only track process_started events with an identified agent.
+        if event.event_type != "process_started" { return; }
+        let Some(agent_name) = event.agent_name.clone() else { return; };
+        let pid = event.actor.as_ref()
+            .and_then(|a| a.get("pid"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as u32;
+        let user = event.actor.as_ref()
+            .and_then(|a| a.get("user"))
+            .and_then(|v| v.as_str()).map(String::from);
+        let exe = event.details.get("exe").and_then(|v| v.as_str()).map(String::from);
+        self.active_agents.push_back(ActiveAgent {
+            seen_at: Instant::now(),
+            pid,
+            agent_name,
+            agent_framework: event.agent_framework.clone(),
+            user,
+            exe,
+        });
+        // Hard cap so a noisy host doesn't unbounded-grow.
+        while self.active_agents.len() > 256 { self.active_agents.pop_front(); }
+    }
+
+    fn prune_attribution(&mut self, now: Instant) {
+        let cutoff = now - Self::ATTRIBUTION_WINDOW;
+        while self.active_agents.front().map_or(false, |a| a.seen_at < cutoff) {
+            self.active_agents.pop_front();
+        }
+    }
+
+    fn attribute(&self) -> Vec<serde_json::Value> {
+        self.active_agents.iter().map(|a| json!({
+            "pid":         a.pid,
+            "agent_name":  a.agent_name,
+            "framework":   a.agent_framework,
+            "user":        a.user,
+            "exe":         a.exe,
+            "age_seconds": a.seen_at.elapsed().as_secs(),
+        })).collect()
     }
 
     /// Analyze an event and return any alerts it triggers.
@@ -46,6 +111,10 @@ impl PatternDetector {
         let now = Instant::now();
         let et = event.event_type.as_str();
         let details = &event.details;
+
+        // Tier 6 — feed the per-process attribution window.
+        self.record_agent_process(event);
+        self.prune_attribution(now);
 
         // Original rules
         if et == "file_modified" {
@@ -281,8 +350,17 @@ impl PatternDetector {
         if !self.cfg.credential_access.enabled { return Vec::new(); }
 
         let path = event.details.get("path").and_then(|v| v.as_str()).unwrap_or("");
+        // Tier 6 attribution: list every agent process active in the
+        // attribution window so SOC can pivot from "credential file was
+        // touched" to "Claude Code (pid 12345) was running at that moment".
+        let suspects = self.attribute();
         vec![self.make_alert("AITF-DET-018", "alert_credential_access",
-            json!({ "path": path, "event_type": event.event_type }),
+            json!({
+                "path": path,
+                "event_type": event.event_type,
+                "candidate_agents": suspects,
+                "attribution_window_seconds": Self::ATTRIBUTION_WINDOW.as_secs(),
+            }),
             "critical", Some("credential_harvesting"), Some(&event.trace_id))]
     }
 
