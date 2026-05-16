@@ -28,7 +28,67 @@ pub struct Config {
 
     #[serde(default)]
     pub runtime: RuntimeConfig,
+
+    #[serde(default)]
+    pub otlp: OtlpConfig,
+
+    #[serde(default)]
+    pub mcp: McpConfig,
 }
+
+// ── OTLP ingest (Tier 1) ──
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OtlpConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_otlp_bind")]
+    pub bind: String,
+    /// Maximum accepted request body size (bytes). Default 4 MiB.
+    #[serde(default = "default_otlp_max_bytes")]
+    pub max_body_bytes: usize,
+    /// When true, OTLP log records and span attributes that look like
+    /// prompts/messages are dropped before storage.
+    #[serde(default = "default_true")]
+    pub redact_content: bool,
+}
+
+impl Default for OtlpConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            bind: default_otlp_bind(),
+            max_body_bytes: default_otlp_max_bytes(),
+            redact_content: true,
+        }
+    }
+}
+
+fn default_otlp_bind() -> String { "127.0.0.1:4318".into() }
+fn default_otlp_max_bytes() -> usize { 4 * 1024 * 1024 }
+
+// ── MCP (Tier 1) ──
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpConfig {
+    /// Scan known MCP config locations at startup and emit class_uid=7004 events.
+    #[serde(default = "default_true")]
+    pub inventory_on_start: bool,
+    /// Periodically re-scan every N seconds (0 = disabled).
+    #[serde(default = "default_mcp_rescan")]
+    pub rescan_seconds: u64,
+}
+
+impl Default for McpConfig {
+    fn default() -> Self {
+        Self {
+            inventory_on_start: true,
+            rescan_seconds: default_mcp_rescan(),
+        }
+    }
+}
+
+fn default_mcp_rescan() -> u64 { 600 }
 
 fn default_watch_dirs() -> Vec<String> {
     Vec::new()
@@ -277,6 +337,8 @@ impl Default for Config {
             storage: StorageConfig::default(),
             server_push: ServerPushConfig::default(),
             runtime: RuntimeConfig::default(),
+            otlp: OtlpConfig::default(),
+            mcp: McpConfig::default(),
         }
     }
 }
