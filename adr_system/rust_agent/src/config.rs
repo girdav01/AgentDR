@@ -34,6 +34,197 @@ pub struct Config {
 
     #[serde(default)]
     pub mcp: McpConfig,
+
+    #[serde(default)]
+    pub exporters: ExportersConfig,
+}
+
+// ── Tier 3 exporters ────────────────────────────────────────────────────
+//
+// All exporters share a small `BatchConfig` and have a per-backend
+// settings block. Each block has `enabled = false` by default; an
+// operator enables only the destinations they actually use.
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ExportersConfig {
+    #[serde(default)] pub splunk:     SplunkConfig,
+    #[serde(default)] pub datadog:    DatadogConfig,
+    #[serde(default)] pub elastic:    ElasticConfig,
+    #[serde(default)] pub chronicle:  ChronicleConfig,
+    #[serde(default)] pub xsiam:      XsiamConfig,
+    #[serde(default)] pub snowflake:  SnowflakeConfig,
+    #[serde(default)] pub sentinel:   SentinelConfig,
+    #[serde(default)] pub wazuh:      WazuhConfig,
+    #[serde(default)] pub syslog:     SyslogConfig,
+    #[serde(default)] pub ocsf:       OcsfConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchConfig {
+    #[serde(default = "default_batch_size_50")]   pub batch_size: usize,
+    #[serde(default = "default_flush_interval_5")] pub flush_interval_seconds: u64,
+    #[serde(default = "default_timeout_10")]      pub timeout_seconds: u64,
+    #[serde(default = "default_max_retries_3")]   pub max_retries: u32,
+}
+impl Default for BatchConfig {
+    fn default() -> Self {
+        Self { batch_size: 50, flush_interval_seconds: 5, timeout_seconds: 10, max_retries: 3 }
+    }
+}
+fn default_batch_size_50() -> usize { 50 }
+fn default_flush_interval_5() -> u64 { 5 }
+fn default_timeout_10() -> u64 { 10 }
+fn default_max_retries_3() -> u32 { 3 }
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SplunkConfig {
+    #[serde(default)] pub enabled: bool,
+    /// HEC endpoint, e.g. https://splunk.example.com:8088
+    #[serde(default)] pub endpoint: String,
+    /// HEC token
+    #[serde(default)] pub token: String,
+    /// Splunk index (optional — falls back to HEC default)
+    #[serde(default)] pub index: String,
+    /// HEC sourcetype (default `agentdr:aitf`)
+    #[serde(default = "default_splunk_sourcetype")] pub sourcetype: String,
+    /// Verify TLS certificate (default true)
+    #[serde(default = "default_true")] pub verify_tls: bool,
+    #[serde(default)] pub batch: BatchConfig,
+}
+fn default_splunk_sourcetype() -> String { "agentdr:aitf".into() }
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DatadogConfig {
+    #[serde(default)] pub enabled: bool,
+    /// API key
+    #[serde(default)] pub api_key: String,
+    /// Datadog site, e.g. datadoghq.com | datadoghq.eu | us3.datadoghq.com
+    #[serde(default = "default_dd_site")] pub site: String,
+    /// `service` tag
+    #[serde(default = "default_dd_service")] pub service: String,
+    /// Static tag list (env:prod, team:secops, ...)
+    #[serde(default)] pub tags: Vec<String>,
+    #[serde(default)] pub batch: BatchConfig,
+}
+fn default_dd_site() -> String { "datadoghq.com".into() }
+fn default_dd_service() -> String { "agentdr".into() }
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ElasticConfig {
+    #[serde(default)] pub enabled: bool,
+    /// Cluster URL, e.g. https://elastic.example.com:9200
+    #[serde(default)] pub endpoint: String,
+    /// Index name (we append a yyyy.MM.dd suffix automatically)
+    #[serde(default = "default_es_index")] pub index: String,
+    /// API key (base64 id:key). Mutually exclusive with basic_auth.
+    #[serde(default)] pub api_key: String,
+    /// `user:password` for basic auth (if api_key is empty)
+    #[serde(default)] pub basic_auth: String,
+    /// Verify TLS certificate
+    #[serde(default = "default_true")] pub verify_tls: bool,
+    #[serde(default)] pub batch: BatchConfig,
+}
+fn default_es_index() -> String { "agentdr-events".into() }
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ChronicleConfig {
+    #[serde(default)] pub enabled: bool,
+    /// Customer GUID (Chronicle tenant)
+    #[serde(default)] pub customer_id: String,
+    /// Ingestion endpoint (region-specific, e.g.
+    /// https://malachiteingestion-pa.googleapis.com)
+    #[serde(default = "default_chronicle_endpoint")] pub endpoint: String,
+    /// OAuth2 access token (operator-supplied; we don't sign JWTs here)
+    #[serde(default)] pub access_token: String,
+    /// Chronicle namespace
+    #[serde(default = "default_chronicle_namespace")] pub namespace: String,
+    /// Log type to apply (forwarded with each event)
+    #[serde(default = "default_chronicle_log_type")] pub log_type: String,
+    #[serde(default)] pub batch: BatchConfig,
+}
+fn default_chronicle_endpoint() -> String { "https://malachiteingestion-pa.googleapis.com".into() }
+fn default_chronicle_namespace() -> String { "agentdr".into() }
+fn default_chronicle_log_type() -> String { "AGENTDR_AITF".into() }
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct XsiamConfig {
+    #[serde(default)] pub enabled: bool,
+    /// HTTP Log Collector URL (Cortex XSIAM "Generic HTTPs Collector" address)
+    #[serde(default)] pub endpoint: String,
+    /// Auth token (XSIAM "API Key")
+    #[serde(default)] pub auth_token: String,
+    /// Static `vendor` / `product` tags
+    #[serde(default = "default_xsiam_vendor")]  pub vendor:  String,
+    #[serde(default = "default_xsiam_product")] pub product: String,
+    #[serde(default)] pub batch: BatchConfig,
+}
+fn default_xsiam_vendor()  -> String { "CoSAI".into() }
+fn default_xsiam_product() -> String { "AgentDR".into() }
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SnowflakeConfig {
+    #[serde(default)] pub enabled: bool,
+    /// Snowpipe REST endpoint or Snowpipe Streaming insert URL
+    #[serde(default)] pub endpoint: String,
+    /// Bearer JWT (operator-supplied — generate with snowsql / Snowflake CLI)
+    #[serde(default)] pub bearer_jwt: String,
+    /// Optional pipe name (Snowpipe classic). Streaming users leave empty.
+    #[serde(default)] pub pipe: String,
+    #[serde(default)] pub batch: BatchConfig,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SentinelConfig {
+    #[serde(default)] pub enabled: bool,
+    /// Log Analytics workspace ID (GUID)
+    #[serde(default)] pub workspace_id: String,
+    /// Shared key (primary or secondary) — base64
+    #[serde(default)] pub shared_key: String,
+    /// Custom log type (Sentinel appends "_CL")
+    #[serde(default = "default_sentinel_log_type")] pub log_type: String,
+    #[serde(default)] pub batch: BatchConfig,
+}
+fn default_sentinel_log_type() -> String { "AgentDR_AITF".into() }
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct WazuhConfig {
+    #[serde(default)] pub enabled: bool,
+    /// Output file path (must be readable by the wazuh-agent's logcollector,
+    /// e.g. `/var/ossec/logs/agentdr.json`).
+    #[serde(default = "default_wazuh_path")] pub output_path: String,
+    /// Rotate after N bytes
+    #[serde(default = "default_wazuh_rotate")] pub rotate_bytes: u64,
+    #[serde(default)] pub batch: BatchConfig,
+}
+fn default_wazuh_path() -> String { "/var/ossec/logs/agentdr.json".into() }
+fn default_wazuh_rotate() -> u64 { 50 * 1024 * 1024 }
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SyslogConfig {
+    #[serde(default)] pub enabled: bool,
+    /// "udp" | "tcp"
+    #[serde(default = "default_syslog_proto")] pub protocol: String,
+    /// host:port (e.g. siem.example.com:514)
+    #[serde(default = "default_syslog_addr")] pub address: String,
+    /// RFC 5424 facility (1..23)
+    #[serde(default = "default_syslog_facility")] pub facility: u8,
+    /// RFC 5424 APP-NAME field
+    #[serde(default = "default_syslog_appname")] pub appname: String,
+    #[serde(default)] pub batch: BatchConfig,
+}
+fn default_syslog_proto() -> String { "udp".into() }
+fn default_syslog_addr()  -> String { "127.0.0.1:514".into() }
+fn default_syslog_facility() -> u8 { 13 } // log audit
+fn default_syslog_appname() -> String { "agentdr".into() }
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct OcsfConfig {
+    #[serde(default)] pub enabled: bool,
+    /// HTTP endpoint accepting OCSF Category 7 JSON
+    #[serde(default)] pub endpoint: String,
+    /// Optional bearer token
+    #[serde(default)] pub bearer_token: String,
+    #[serde(default)] pub batch: BatchConfig,
 }
 
 // ── OTLP ingest (Tier 1) ──
@@ -339,6 +530,7 @@ impl Default for Config {
             runtime: RuntimeConfig::default(),
             otlp: OtlpConfig::default(),
             mcp: McpConfig::default(),
+            exporters: ExportersConfig::default(),
         }
     }
 }

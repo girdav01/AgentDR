@@ -2,6 +2,7 @@
 
 use crate::config::Config;
 use crate::detectors::PatternDetector;
+use crate::exporters;
 use crate::ingest::otlp::{self, OtlpSink};
 use crate::mcp;
 use crate::models::*;
@@ -10,7 +11,7 @@ use crate::storage::{EventPusher, JsonlStore};
 use serde_json::json;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{broadcast, mpsc, watch};
 use tokio::time::{interval, Duration};
 use tracing::info;
 
@@ -48,12 +49,20 @@ impl AgentEngine {
         // Status file
         self.write_status("running");
 
-        // Spawn event pusher
+        // Spawn legacy server_push pusher (kept for back-compat with the
+        // existing /api/sync dashboard endpoint).
         let pusher = EventPusher::new(&self.config.server_push);
         let pusher_shutdown = shutdown_rx.clone();
         tokio::spawn(async move {
             pusher.run(push_rx, pusher_shutdown).await;
         });
+
+        // ── Tier 3: vendor exporter bus ──
+        let (bus_tx, _bus_rx) = broadcast::channel::<EventRecord>(4096);
+        let active = exporters::spawn_all(&self.config.exporters, &bus_tx, &shutdown_rx);
+        if !active.is_empty() {
+            info!("vendor exporters active: {:?}", active);
+        }
 
         // Spawn process monitor
         let proc_tx = event_tx.clone();
@@ -164,6 +173,7 @@ impl AgentEngine {
                     // Persist
                     store.write_event(&event);
                     let _ = push_tx.send(event.clone());
+                    let _ = bus_tx.send(event.clone());
 
                     if stream {
                         Self::print_event(&event);
@@ -174,6 +184,7 @@ impl AgentEngine {
                     for alert in alerts {
                         store.write_event(&alert);
                         let _ = push_tx.send(alert.clone());
+                        let _ = bus_tx.send(alert.clone());
                         if stream {
                             Self::print_event(&alert);
                         }

@@ -53,6 +53,11 @@ toml = "0.8"
 # SHA-256 integrity verification
 sha2 = "0.10"
 
+# Tier 3: exporter backends
+async-trait = "0.1"
+hmac = "0.12"
+base64 = "0.22"
+
 # Paths (hooks, MCP inventory)
 dirs = "5"
 hostname = "0.4"
