@@ -3,9 +3,10 @@
  *
  * Computes rolling per-(host, user, agent) baselines for five behavioural
  * metrics and exposes a z-score so analysts can rank recent events by how
- * anomalous they look against that user/agent's own history. This is what
- * Asymptote's marketing copy gestures at ("learns how work normally
- * happens") — except open source and per-agent, not per-user.
+ * anomalous they look against that user/agent's own history. Most UEBA
+ * systems baseline humans; here we baseline the agent acting on behalf
+ * of the human, so anomalies attributable to a specific runtime surface
+ * even when the human owner's overall activity looks normal.
  *
  * Metrics (per 1-hour window):
  *   - tokens_per_hour          : sum of token_usage.total seen for that bucket
