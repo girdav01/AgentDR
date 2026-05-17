@@ -3,8 +3,8 @@
 > Target platform: Ubuntu 22.04 / Debian 12 / RHEL 9, x86_64 or aarch64.
 > Estimated runtime: 20 min walkthrough, 40 min full plan.
 > **Strength of this platform:** native kernel telemetry via NETLINK_AUDIT
-> works out of the box — best demo for the Tier 6 "what Asymptote skips"
-> story.
+> works out of the box — best demo for the Tier 6 "things current OSS
+> AI-telemetry projects skip" story.
 
 ## Setup
 
@@ -256,10 +256,10 @@ sudo cp /tmp/agentdr-demo.aws /var/lib/agentdr/watch/test.aws 2>/dev/null || tru
 sudo grep alert_credential_access /var/lib/agentdr/logs/events.jsonl | tail -1 | jq '.details.candidate_agents'
 ```
 
-> DEMO NARRATION: *"Beacon stops at 'a credential file was read'.
-> AgentDR joins that read with every agent process running inside a
-> 10-minute window so the analyst gets the suspect list, not just the
-> finding."*
+> DEMO NARRATION: *"Most AI-telemetry tools stop at 'a credential file
+> was read'. AgentDR joins that read with every agent process running
+> inside a 10-minute window so the analyst gets the suspect list, not
+> just the finding."*
 
 ---
 

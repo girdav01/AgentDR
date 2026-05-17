@@ -2,26 +2,27 @@
 
 *Published 2026-05-17 · CoSAI / AgentDR contributors · ~12 minute read*
 
-A new vendor launched last week with a thesis that's right enough to take
-seriously: *the AI security stack is looking in the wrong place.* When
-the user on your endpoint is a coding agent — Claude Code, Cursor,
-Codex, Aider, OpenClaw — your gateways and your inference firewalls can
-tell you what a model **said**, but they can't tell you what an agent
-**did**: which file it read, which tool it called, which MCP server it
-just installed, which API endpoint it tried to hit after the user
-explicitly told it not to.
+A growing wave of open-source projects has converged on a thesis that's
+right enough to take seriously: *the AI security stack is looking in
+the wrong place.* When the user on your endpoint is a coding agent —
+Claude Code, Cursor, Codex, Aider, OpenClaw — your gateways and your
+inference firewalls can tell you what a model **said**, but they can't
+tell you what an agent **did**: which file it read, which tool it
+called, which MCP server it just installed, which API endpoint it tried
+to hit after the user explicitly told it not to.
 
-Asymptote Labs deserves credit for naming the gap and for shipping
-Beacon, an open-source endpoint telemetry layer for local AI agents.
-The category is real. The thesis is right.
+These projects deserve credit for naming the gap and for showing that
+endpoint-side AI telemetry is the right place to start. The category is
+real. The thesis is right.
 
-But Beacon stops one step short of the place this story has to go.
+But the first wave of OSS efforts in this space stops one step short of
+the place this story has to go: they ship visibility, then hand the
+problem off. AgentDR is what happens when you decide that visibility is
+the prerequisite, not the goal.
 
 We've been quietly building **AgentDR** — an open-source endpoint
 detection *and response* platform on the same threat model — for the
 last few months. Today we're putting the full thing in the open.
-AgentDR is what happens when you decide that visibility is the
-prerequisite, not the goal.
 
 ## What "the user on your endpoint is an agent" actually means
 
@@ -55,31 +56,33 @@ the **subject** behind the activity:
 
 The shape of the answer is the shape of the product.
 
-## Where Beacon stops
+## Where current OSS efforts in this space stop
 
-Beacon's model is **OpenTelemetry collector + per-agent runtime hooks +
-normalised JSON output to one or two SIEMs.** It's a cleanly executed
-collector. We share two of those three primitives.
+The shape of most first-wave OSS AI-telemetry projects looks like
+**OpenTelemetry collector + per-agent runtime hooks + normalised JSON
+output to one or two SIEMs.** That's a cleanly executed collector — and
+we share two of those three primitives.
 
-Where Beacon stops:
+Where most of those projects stop:
 
-* **Visibility only.** Beacon's README is explicit: no inline
+* **Visibility only.** Their READMEs are typically explicit: no inline
   enforcement, no policy engine, no blocking. SOC sees the event, then
   has to act elsewhere.
-* **One platform.** macOS only. The signed `.pkg` and Jamf integration
-  are nicely done; Linux and Windows are not on the roadmap.
-* **Two destinations.** Splunk HEC and Wazuh files. The marketing
-  diagram shows Datadog and Elastic and Chronicle and XSIAM; the
-  README says none of those exist yet.
-* **No MCP capture.** The README lists MCP as a non-goal.
+* **One platform.** Usually macOS-first; Linux and Windows often
+  aren't on the roadmap.
+* **One or two destinations.** A Splunk HEC sink and a JSON-file
+  output. The marketing diagrams promise Datadog, Elastic, Chronicle,
+  XSIAM — but those rarely exist in the source tree yet.
+* **No MCP capture.** Often listed as an explicit non-goal.
 * **No kernel layer, no shell capture, no browser, no credential
-  attribution.** All explicit non-goals.
-* **Custom JSON.** Not OCSF Category 7. Not AITF. Operators who deploy
-  Beacon today will have to re-parse in 2027.
+  attribution.** All explicit non-goals in the projects we've surveyed.
+* **Custom JSON shapes.** Not OCSF Category 7. Not AITF. Operators who
+  deploy today will have to re-parse their telemetry in 2027 once the
+  industry settles on a standard.
 
-These aren't criticisms — they're scope choices appropriate to a v0.0.6
-project. They are also exactly the surface area an agentic-EDR has to
-cover.
+These aren't criticisms — they're scope choices appropriate to early-
+stage projects. They are also exactly the surface area an agentic-EDR
+has to cover.
 
 ## What we built instead
 
@@ -133,14 +136,15 @@ backend can't starve a fast one.
 
 ### Tier 4 — UEBA for agents
 
-Beacon's parent company, Asymptote, markets itself on the line *"learns
-how work normally happens."* That's the right product line. We built
-the open-source version. AgentDR computes rolling
-per-(host, user, agent) baselines for five behavioural metrics:
-tokens/hour, files-touched/hour, MCP tool diversity, off-hours share,
-and API call rate. Each event gets scored against the matching
-baseline with a z-score. The dashboard surfaces the outliers, and the
-session view reconstructs the kill chain across hosts by trace_id.
+Most behavioural-analytics products baseline humans. AgentDR baselines
+the *agent acting on behalf of* the human — rolling per-(host, user,
+agent) statistics on five behavioural metrics: tokens/hour, files-
+touched/hour, MCP tool diversity, off-hours share, and API call rate.
+Each event gets scored against the matching baseline with a z-score, so
+anomalies attributable to a specific runtime surface even when the
+human owner's overall activity looks normal. The dashboard exposes the
+outliers, and the session view reconstructs the kill chain across hosts
+by trace_id.
 
 ### Tier 5 — governance, not just visibility
 

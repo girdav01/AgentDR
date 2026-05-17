@@ -98,9 +98,10 @@ tail -2 "$DEMO_ROOT/logs/events.jsonl" | jq '{class_uid, event_type, tool_name, 
 adr-agent mcp inventory --jsonl | jq '. | {runtime: .details.runtime, name: .details.name, transport: .details.transport}'
 ```
 
-> DEMO NARRATION: *"Beacon explicitly skips MCP configuration inventory.
-> We do it across every coding agent's config in one shot, and we'll
-> proxy the JSON-RPC on the next slide."*
+> DEMO NARRATION: *"Comparable telemetry-only projects in this space
+> generally skip MCP configuration inventory. We do it across every
+> coding agent's config in one shot, and we'll proxy the JSON-RPC on
+> the next slide."*
 
 ### STEP T1.5 — wrap a real MCP server
 

@@ -11,25 +11,26 @@
   Enterprises now ask **the same governance questions** they asked about
   laptops in 2010: who has them, what do they do, can we block what we
   don't want?
-* The first wave of vendors framed this as *visibility* (Asymptote's
-  Beacon, May 2026 launch). The next wave will be defined by *governance
-  + response* — the "R" in EDR. AgentDR ships both today.
+* The first wave of OSS efforts in this space framed the problem as
+  *visibility* — a telemetry collector for one platform, shipping to
+  one or two SIEMs. The next wave will be defined by *governance +
+  response* — the "R" in EDR. AgentDR ships both today.
 * Standards momentum: CoSAI AITF, OCSF Category 7, and OTel `gen_ai.*`
   semantic conventions all converged in early 2026. We are the
   reference implementation of all three on the endpoint side.
 
 ## 2. Positioning
 
-|                       | **AgentDR (CoSAI)**                          | Asymptote Beacon                           | Commercial EDRs (CrowdStrike, SentinelOne) |
+|                       | **AgentDR (CoSAI)**                          | Other OSS AI-telemetry collectors          | Commercial EDRs (CrowdStrike, SentinelOne) |
 |-----------------------|----------------------------------------------|--------------------------------------------|--------------------------------------------|
-| License               | Apache-2.0                                   | MIT                                        | Closed                                     |
-| Platforms             | macOS / Linux / Windows                      | macOS only                                 | All                                        |
+| License               | Apache-2.0                                   | MIT / Apache-2.0 (varies)                  | Closed                                     |
+| Platforms             | macOS / Linux / Windows                      | typically single-OS (often macOS)          | All                                        |
 | AI-aware              | First-class (10 OCSF Cat-7 classes, 20 rules)| First-class                                | Bolt-on (mid-2026)                         |
 | Telemetry path        | OTLP hooks + MCP capture + kernel + browser  | OTLP collector only                        | Kernel-only                                |
-| Destinations          | 10 SIEM/observability exporters              | Splunk + Wazuh only                        | Vendor's own backend                       |
+| Destinations          | 10 SIEM/observability exporters              | usually 1–2 (Splunk/Wazuh-style)           | Vendor's own backend                       |
 | Governance / blocking | Inline proxy + policy-as-code                | None                                       | Limited                                    |
 | UEBA for agents       | Per-(host, user, agent) baselines            | None                                       | Human-only UEBA                            |
-| Standards alignment   | CoSAI AITF, OCSF, OWASP-LLM, NIST AI-RMF     | Custom JSON                                | None                                       |
+| Standards alignment   | CoSAI AITF, OCSF, OWASP-LLM, NIST AI-RMF     | Custom JSON shapes                         | None                                       |
 
 **Tagline candidates:**
 
@@ -37,8 +38,8 @@
 2. *"Observe, govern, and respond to AI agent activity. Open source."*
 3. *"Beyond visibility: agentic endpoint defense, on standards."*
 
-Use #1 in technical channels; #2 for buyer/CISO audiences; #3 against
-Beacon head-to-head.
+Use #1 in technical channels; #2 for buyer/CISO audiences; #3 in
+side-by-side comparisons against other OSS efforts in the same space.
 
 ## 3. Personas
 
@@ -85,8 +86,8 @@ Beacon head-to-head.
 ## 4. Key messages (use in this order)
 
 1. **"AI agents are users now."** Frame the threat model.
-2. **"Visibility is not enough."** Distinguish from Beacon. Show
-   inline-block demo or policy violation event.
+2. **"Visibility is not enough."** Distinguish from telemetry-only
+   collectors. Show the inline-block demo or a policy-violation event.
 3. **"Built on open standards, on day one."** CoSAI AITF, OCSF Category 7,
    OpenTelemetry `gen_ai.*`. We didn't invent another schema.
 4. **"Cross-platform, cross-SIEM, cross-agent."** macOS+Linux+Windows,
@@ -143,20 +144,21 @@ Beacon head-to-head.
 
 ## 8. Differentiation framing
 
-When someone asks **"how is this different from Beacon?"** use these
-three sentences, in this order:
+When someone asks **"how is this different from other OSS AI-telemetry
+projects?"** use these three sentences, in this order:
 
-1. *"Beacon makes agent activity observable. AgentDR makes it observable
-   **and** governable — same broadcast bus drives the SIEM exporters and
-   an inline HTTP CONNECT proxy with policy-as-code."*
-2. *"Beacon supports macOS and two destinations. AgentDR supports all
-   three OSes and ten destinations on day one."*
-3. *"Beacon ships its own JSON shape. AgentDR is the reference
+1. *"Most of them make agent activity observable. AgentDR makes it
+   observable **and** governable — the same broadcast bus drives the
+   SIEM exporters and an inline HTTP CONNECT proxy with policy-as-code."*
+2. *"Most of them support one platform and one or two destinations.
+   AgentDR supports all three OSes and ten destinations on day one."*
+3. *"Most of them ship their own JSON shape. AgentDR is the reference
    implementation of CoSAI AITF — the same OCSF Category 7 schema your
    other AI-aware tools will speak by 2027."*
 
-Never punch down. Always frame Beacon as having proven the category and
-AgentDR as taking the next step.
+Never punch down at individual projects. Always frame the broader OSS
+movement as having proven the category and AgentDR as taking the next
+step.
 
 ## 9. Metrics / KPIs
 
@@ -178,7 +180,7 @@ AgentDR as taking the next step.
 | Risk | Likelihood | Mitigation |
 |------|------------|------------|
 | Cloud-EDR vendor ships an AI module and FUDs us | High | Lean into open-source angle; show side-by-side deployment story |
-| Asymptote launches a paid tier and bundles enforcement | Medium | We have a 6-month head start on governance; keep widening the gap |
+| A peer OSS project adds paid enforcement | Medium | We have a head start on governance; keep widening the gap, stay Apache-2.0 |
 | OCSF AI Activity category fragments | Medium | Co-author the next OCSF AI proposal so AgentDR shapes the schema |
 | Agent vendors revoke OTLP hooks | Low | We capture via MCP and process telemetry as well; redundant paths |
 | "Yet another agent" fatigue | Medium | <40 MB resident, no kernel module, clear "alongside CrowdStrike" story |

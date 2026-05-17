@@ -125,11 +125,14 @@
 
 ## FAQ
 
-**Q: Is this a fork of Beacon?**
-No. AgentDR shares Beacon's threat model (local agents move the security
-boundary to the endpoint) but is independently built, cross-platform,
-and ships governance — not just visibility. Asymptote's launch validated
-the category; AgentDR is the next step.
+**Q: Is this a fork of another OSS AI-telemetry project?**
+No. AgentDR is independently built. We share the threat model that
+several other open-source efforts in this space have articulated —
+local agents move the security boundary to the endpoint — but we
+extend that model in three directions: cross-platform (macOS / Linux /
+Windows), cross-SIEM (ten exporters), and from visibility into
+governance (inline blocking proxy + policy-as-code). The broader OSS
+movement validated the category; AgentDR is the next step.
 
 **Q: Why CoSAI / OCSF Category 7 and not your own schema?**
 Because in 2027 every AI-aware SIEM will speak OCSF Cat-7. AgentDR is

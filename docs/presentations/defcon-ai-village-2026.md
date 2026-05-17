@@ -154,29 +154,27 @@ source software that fills the gap."*
 
 ---
 
-## The first attempt (May 2026)
+## The first OSS wave (early 2026)
 
 ```
-  Asymptote Labs — Beacon
-  "World's first open-source endpoint telemetry layer for local AI agents"
+  A growing set of open-source AI-telemetry collectors
 
   ✓  Validated the category
   ✓  Open-sourced the framing
-  ✓  OTLP-based collector for macOS
+  ✓  OTLP-based collectors targeting one OS (usually macOS)
 
-  ✗  Visibility only — no enforcement
-  ✗  macOS only
-  ✗  2 destinations (Splunk + Wazuh)
-  ✗  Custom JSON (not OCSF / AITF)
+  ✗  Visibility only — no inline enforcement
+  ✗  Single platform
+  ✗  1–2 destinations (typically Splunk HEC + a JSON file sink)
+  ✗  Custom JSON shapes (not OCSF / AITF)
   ✗  Explicit non-goals: MCP capture, kernel, browser,
      credential attribution, …
 ```
 
 note:
-*"Credit where it's due — Asymptote named the gap, built a clean
-v0.0.6, and made it public. We share two of their three primitives.
-What we're going to show is what happens when you go six steps
-further."*
+*"Credit where it's due — this OSS wave named the gap and proved the
+category. We share two of their three primitives. What we're going to
+show is what happens when you go six steps further."*
 
 ---
 
@@ -219,9 +217,9 @@ terminal."*
    keys, marker block, reversible with `hooks uninstall`."*
 3. Fire the OTel curl. Show the JSONL line — *"class_uid 7001 for the
    inference, 7003 for the tool call, trace_id propagated."*
-4. `adr-agent mcp inventory --jsonl` — *"Beacon's README says MCP
-   inventory is an explicit non-goal. Here it is across eight known
-   config locations."*
+4. `adr-agent mcp inventory --jsonl` — *"Most comparable OSS efforts
+   list MCP inventory as an explicit non-goal. Here it is across eight
+   known config locations."*
 
 note:
 Keep this demo TIGHT. 5 minutes max. The audience needs to see one
@@ -276,8 +274,8 @@ signed up to."*
 6. With the same proxy, `curl https://api.anthropic.com` — show 200,
    then the `class_uid=7001 proxy_allow` event.
 7. Fire the OTel `gen_ai.approval.decision=deny` span. Show the
-   `class_uid=7007` event. *"Beacon doesn't capture approvals at all.
-   We map them straight to Permission Escalation."*
+   `class_uid=7007` event. *"Comparable collectors don't capture
+   approvals at all. We map them straight to Permission Escalation."*
 
 note:
 This is the headline demo. Make sure the proxy logs are scrolling on a
@@ -327,8 +325,9 @@ T6.5.
    `kernel_audit` event appearing in JSONL within a second.
 3. Trigger the credential read on macOS (back to laptop one). Show
    the AITF-DET-018 alert with the `candidate_agents` array — pid,
-   agent name, framework, user, exe, age_seconds. *"Beacon stops at
-   'a credential file was read.' We tell the analyst **who**."*
+   agent name, framework, user, exe, age_seconds. *"Most AI-telemetry
+   tools stop at 'a credential file was read.' We tell the analyst
+   **who**."*
 
 note:
 This is where you sell the "open source + cross-platform" angle.
@@ -379,10 +378,10 @@ Observed event:  tokens=14 880 (z=9.7)   ← outlier
 ```
 
 note:
-*"Asymptote markets itself as 'learns how work normally happens'. This
-is the open-source version. Per-(host, user, agent) rolling baselines.
-A z-score on every event. Outliers surface in Sessions and stream into
-your SIEM as-is."*
+*"Most behavioural-analytics products baseline humans. We baseline the
+agent that ran on behalf of the human — per-(host, user, agent) rolling
+baselines, a z-score on every event. Outliers surface in Sessions and
+stream into your SIEM as-is."*
 
 ---
 
@@ -517,8 +516,9 @@ Take questions. Stretch goals if there's time:
 
 ## D. Useful one-liners during Q&A
 
-* *"Beacon launched. They validated the category. AgentDR is the next
-  step — visibility plus governance, on standards, cross-platform."*
+* *"A whole OSS wave validated the category last spring. AgentDR is
+  the next step — visibility plus governance, on standards,
+  cross-platform."*
 * *"No, we don't replace CrowdStrike. We run alongside it. Different
   layer."*
 * *"Yes, the same engine backs the SIEM exporters and the inline
@@ -528,9 +528,11 @@ Take questions. Stretch goals if there's time:
 
 ## E. References
 
-* [Asymptote Labs — Beacon launch](https://github.com/Asymptote-Labs/agent-beacon)
 * [CoSAI AI Telemetry Framework](https://github.com/girdav01/aitf)
 * [OCSF — Open Cybersecurity Schema Framework](https://schema.ocsf.io)
 * [OpenTelemetry — gen_ai semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
 * [OWASP LLM Top-10 (2025)](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
 * [NIST AI Risk Management Framework 1.0](https://www.nist.gov/itl/ai-risk-management-framework)
+* Other OSS endpoint AI-telemetry projects — search GitHub for
+  `topic:ai-agent topic:telemetry license:mit` (an active and growing
+  space we draw threat-model motivation from).
