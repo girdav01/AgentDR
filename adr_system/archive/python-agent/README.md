@@ -1,3 +1,19 @@
+> ## ⚠️ ARCHIVED
+>
+> This is the **original Python prototype** of the AgentDR endpoint agent.
+> It has been superseded by the Rust agent at
+> [`adr_system/rust_agent/`](../../rust_agent/), which is now the
+> reference implementation and the only actively maintained endpoint
+> agent. The Python version is kept here for historical reference and is
+> **not built, tested, or shipped**.
+>
+> All current capabilities — OTLP ingest, runtime hooks, MCP capture,
+> vendor exporters, policy-as-code, the inline blocking proxy, kernel /
+> shell / browser telemetry, and credential attribution — live in the
+> Rust agent. See the repository-root `README.md`.
+
+---
+
 # ADR Monitoring Agent (Windows + macOS)
 
 Cross-platform Python monitoring agent for ADR (Agent Detection & Response) prototype.

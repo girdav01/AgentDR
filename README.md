@@ -8,14 +8,26 @@ The project is organized into two cooperating components plus a shared, pluggabl
 
 ```
 AgentDR/
-├── adr_system/                  ← Endpoint monitoring agent (Python)
-│   ├── agent/                   ← Monitors, detectors, engine, CLI
+├── adr_system/
+│   ├── rust_agent/              ← Endpoint monitoring agent (Rust) — reference impl
+│   │   ├── src/                 ← Monitors, ingest, exporters, policy, proxy, CLI
+│   │   └── Cargo.toml
 │   ├── cosai-community/         ← Shared CoSAI/AITF rule pack (signatures, endpoints, policies)
-│   ├── config.json              ← Runtime configuration
-│   └── requirements.txt
-└── adr_dashboard/
-    └── nextjs_space/            ← Analyst dashboard (Next.js 14 + Prisma + Postgres)
+│   └── archive/
+│       └── python-agent/        ← Original Python prototype (archived, not maintained)
+├── adr_dashboard/
+│   └── nextjs_space/            ← Analyst dashboard (Next.js 14 + Prisma + Postgres)
+├── packaging/                   ← Signed installers: macOS .pkg, Windows MSI, Linux deb/rpm
+├── mdm/                         ← MDM templates: Jamf, Intune, Kandji, Fleet
+└── docs/                        ← Test plans, marketing, blog, conference deck
 ```
+
+> **Note on the Python agent.** AgentDR began as a Python prototype. The
+> endpoint agent has since been rewritten in **Rust** — it is faster,
+> uses < 40 MB resident, has no interpreter dependency, and is the only
+> actively maintained agent. The Python prototype is preserved under
+> [`adr_system/archive/python-agent/`](adr_system/archive/python-agent/)
+> for historical reference and is not built, tested, or shipped.
 
 ---
 
@@ -30,36 +42,38 @@ AgentDR/
 
 ## Components
 
-### 1. `adr_system/` — Endpoint Monitoring Agent
+### 1. `adr_system/rust_agent/` — Endpoint Monitoring Agent
 
-A cross-platform Python agent (Windows, macOS, Linux) that runs on the monitored host. It is composed of four cooperating monitors and a detection engine.
+A cross-platform **Rust** agent (Windows, macOS, Linux) that runs on the monitored host. It is built around an async event bus: every monitor, ingest path and detector produces `EventRecord`s into a single channel; storage, the legacy server-push, the vendor exporters and the policy engine all consume from it.
 
-**File monitor** (`agent/monitors/file_monitor.py`) — Uses `watchdog` to capture create/modify/delete/move events on configured directories. Flags files that land in known agent-skill paths (`.openclaw/skills`, `.autogpt/plugins`, `skills/`, etc.) and credential-sensitive paths (`.env`, `id_rsa`, `.aws/credentials`, `service-account.json`, ...).
+**Monitors** (`src/monitors/`) — `file` (via `notify`), `process` (via `sysinfo`), `network`, `browser` (Chrome DevTools Protocol) and `kernel` (Linux NETLINK_AUDIT). See *[How AgentDR turns behavior into telemetry](#how-agentdr-turns-behavior-into-telemetry)* below for the full technique inventory.
 
-**Network monitor** (`agent/monitors/network_monitor.py`) — Two operating modes:
-- **Proxy mode (preferred):** spawns `mitmproxy` with the `mitm_addon.py` add-on so HTTPS calls to AI provider domains (OpenAI, Anthropic, Google, DeepSeek, Mistral, Ollama, Microsoft Copilot, ServiceNow, SAP AI, Browserbase, etc.) are decoded with method, host, path, and client IP.
-- **Fallback mode:** if the proxy fails to start, the agent samples sockets via `psutil` plus DNS resolution to record connections to the same target hosts on a best-effort basis.
+**Ingest** (`src/ingest/`) — A loopback OTLP/HTTP server that decodes OpenTelemetry `gen_ai.*` semantic conventions straight into the AITF schema.
 
-**Process monitor** (`agent/monitors/process_monitor.py`) — Polls the process table and emits `process_started` / `process_ended` events. Process names, executables, and command lines are matched against `cosai-community/rules/agent-signatures.json` to classify which AI agent is running.
+**MCP** (`src/mcp/`) — Model Context Protocol server inventory plus an stdio-proxy that captures every JSON-RPC message.
 
-**Detection engine** (`agent/detectors.py`) — Stateful pattern detection over the event stream. Implements rules `AITF-DET-009` through `AITF-DET-020` (rapid file modifications, unusual API volume, large/bulk deletions, malicious skill loads, unauthorized messaging, shell execution by an agent, credential access, cross-platform data relay, and unvetted skill installation). Every detection emits a CoSAI-compliant alert with OCSF fields, an OWASP LLM Top-10 mapping, and a NIST AI-RMF compliance reference.
+**Detection engine** (`src/detectors.rs`) — Stateful pattern detection implementing all 20 rules (`AITF-DET-001` → `AITF-DET-020`), plus credential-use attribution.
 
-**Storage & shipping** — Events land in `agent/logs/events.jsonl` (rotated). An optional `server_push` block in `config.json` ships batches to an HTTPS collector (the dashboard's `/api/sync` endpoint or any SIEM ingest URL).
+**Policy & response** (`src/policy/`, `src/proxy/`) — A YAML policy-as-code engine and an inline HTTP CONNECT proxy that can *block* agent egress, not just observe it.
 
-**CLI** (`agent/main.py`):
+**Exporters** (`src/exporters/`) — Ten SIEM/observability backends (Splunk, Datadog, Elastic, Chronicle, XSIAM, Snowflake, Sentinel, Wazuh, syslog, generic OCSF).
+
+**CLI** (`src/main.rs`):
 
 ```
-python -m agent.main start              # foreground with live event stream
-python -m agent.main start --daemon     # background daemon
-python -m agent.main stop                # stop daemon
-python -m agent.main status              # daemon status
-python -m agent.main stats               # summarise events.jsonl
-python -m agent.main config show
-python -m agent.main config add-watch ~/Projects
-python -m agent.main config set detection.unusual_api_call_volume.threshold_count 80
-python -m agent.main update              # refresh community rule pack
-python -m agent.main verify              # verify SHA-256 checksums of rule files
+adr-agent start --watch ~/Projects      # foreground with live event stream
+adr-agent verify                        # verify SHA-256 checksums of rule files
+adr-agent update                        # refresh community rule pack
+adr-agent hooks install all             # wire Claude Code / Cursor / Codex / Aider to OTLP
+adr-agent mcp inventory                 # enumerate MCP server configs
+adr-agent mcp wrap --name x -- <cmd>    # stdio-proxy + record an MCP server
+adr-agent otlp                          # standalone OTLP collector
+adr-agent policy list | policy test     # inspect / dry-run the policy pack
+adr-agent proxy --allow anthropic.com   # standalone inline blocking proxy
+adr-agent shell wrap --name s -- <cmd>  # record an agent shell session
 ```
+
+Build it with `cd adr_system/rust_agent && cargo build --release`; the binary is `target/release/adr-agent`. Pre-built signed packages for all three OSes are produced by the release workflow in `.github/workflows/release.yml`.
 
 ### 2. `adr_dashboard/nextjs_space/` — Analyst Dashboard
 
@@ -93,6 +107,94 @@ cosai-community/
 ├── checksums.sha256               # SHA-256 manifest verified by `agent verify`
 └── docs/CONTRIBUTING.md
 ```
+
+---
+
+## How AgentDR turns behavior into telemetry
+
+AgentDR's job is to take *raw endpoint behavior* — a file opened, a syscall
+made, an HTTP request attempted, a JSON-RPC frame sent to an MCP server —
+and convert it into **normalized, SIEM-ready telemetry**: one `EventRecord`
+per observed behavior, shaped against OCSF Category 7. Every technique below
+feeds the **same async event bus**; the bus is what makes a credential read
+from the file monitor, an OTLP span from Claude Code, and a blocked
+connection from the inline proxy all come out the other end with the same
+fields, the same `trace_id` discipline, and the same compliance mappings.
+
+### The pipeline
+
+```
+ observation techniques            normalization              fan-out
+ ─────────────────────             ─────────────              ───────
+ file / process / network  ┐
+ OTLP gen_ai.* ingest      │
+ MCP inventory + stdio     ├──►  EventRecord  ──►  detection  ──►  JSONL store
+ kernel audit              │     (OCSF Cat-7)      engine +       server push
+ shell / TTY wrap          │     class_uid,        policy         10 exporters
+ browser CDP               │     trace_id,         engine         inline proxy
+ inline proxy              ┘     severity_id …                    decisions
+```
+
+Nothing downstream needs to know *which* technique produced an event — the
+detector, the policy engine and every exporter operate purely on the
+normalized `EventRecord`.
+
+### Technique inventory
+
+| # | Technique | What it observes | OS mechanism | Becomes |
+|---|-----------|------------------|--------------|---------|
+| 1 | **File-system watch** | create / modify / delete / move under watched dirs; writes to agent-skill paths and credential files | `inotify` (Linux), `FSEvents` (macOS), `ReadDirectoryChangesW` (Windows) via the `notify` crate | `class_uid 7002` agent action; `7006` on credential paths |
+| 2 | **Process-table polling** | process start / stop; names, exe paths and command lines matched to AI-agent signatures | `/proc` (Linux), `libproc` (macOS), `ToolHelp` (Windows) via `sysinfo` | `class_uid 7002`; `agent_name` / `agent_framework` populated from `agent-signatures.json` |
+| 3 | **Network observation** | outbound connections to AI provider & messaging hosts | mitm-style HTTP proxy *or* socket sampling + DNS | `class_uid 7001` (AI API) / `7007` (messaging) |
+| 4 | **OTLP `gen_ai.*` ingest** | prompts, tool calls, token usage, approvals — emitted by the agents themselves | loopback OTLP/HTTP server; OpenTelemetry GenAI semantic conventions | `7001` inference, `7003` tool, `7004` MCP, `7007` approval |
+| 5 | **Runtime hooks** | wires Claude Code / Cursor / Codex / Aider to emit (4) in the first place | edits each agent's own config (`settings.json`, `mcp.json`, `config.toml`) | enables technique 4 with semantic certainty (no guessing) |
+| 6 | **MCP inventory** | which MCP servers are declared, where, with which transport and which secret env keys | scans 8 known config locations across every runtime | `class_uid 7004`, `activity_id 2 (Read)` |
+| 7 | **MCP stdio interception** | every JSON-RPC request/response to a wrapped MCP server | `adr-agent mcp wrap` re-execs the server and proxies stdin/stdout | `class_uid 7004`; `tool_name` = JSON-RPC method |
+| 8 | **Kernel audit** | syscall / path records from the OS audit subsystem | `NETLINK_AUDIT` multicast (Linux); EndpointSecurity / ETW posture on macOS / Windows | `class_uid 7002`, `activity_id 6 (Detect)` |
+| 9 | **Shell / TTY wrap** | every command an agent shell-execs, plus its stdout / stderr | `adr-agent shell wrap` pipes stdin/stdout/stderr | `class_uid 7003`; input = medium risk, output = low |
+| 10 | **Browser CDP attach** | page open / navigate / close by browser-use agents | polls the Chrome DevTools `/json` endpoint | `class_uid 7002` with destination URL |
+| 11 | **Inline proxy decisions** | every CONNECT an agent attempts, allowed or denied | loopback HTTP CONNECT proxy consulted by `HTTPS_PROXY` | `7001/7002` on allow, `7008` BLOCKED on deny |
+| 12 | **Credential attribution** | joins a credential-file read to the agent process responsible | 10-minute rolling window of agent `process_started` events | enriches the `AITF-DET-018` alert with a `candidate_agents` list |
+
+### From observation to a normalized event
+
+Each technique constructs an `EventRecord` and fills the OCSF Category 7
+fields it can attest to:
+
+* **`class_uid` / `type_uid` / `activity_id`** — *what kind of behavior*
+  this is (LLM inference, tool execution, MCP operation, data
+  exfiltration …) and the verb (Create / Read / Update / Delete /
+  Execute / Detect / Block).
+* **`severity_id` / `risk_level` / `status_id`** — *how dangerous* and
+  whether it succeeded, failed, or was **blocked**.
+* **AI-specific identity** — `provider`, `model`, `agent_name`,
+  `agent_framework`, `tool_name`, `mcp_server`, `token_usage`,
+  `actor` (`{user, host, pid}`).
+* **`trace_id` / `span_id`** — OpenTelemetry-style IDs. Techniques that
+  see a real trace (OTLP, MCP) carry it through verbatim; the rest
+  generate one. Detections inherit the `trace_id` of the event that
+  triggered them, so a multi-step agent run reconstructs end-to-end.
+* **`compliance` / `security_finding`** — OWASP LLM Top-10 and
+  NIST AI-RMF mappings attached to every detection and policy hit.
+
+### From a normalized event to a decision
+
+Once an event is on the bus it is, in order:
+
+1. **persisted** to a rotating JSONL store;
+2. run through the **detection engine** — 20 stateful rules over sliding
+   time windows (e.g. *rapid file modification*, *unusual API volume*,
+   *credential access*) — each match emitting its own alert event;
+3. run through the **policy engine** — YAML policy-as-code; each match
+   emits a `class_uid 7008` Compliance Violation and can escalate to a
+   **block**;
+4. **fanned out** to the legacy server-push and to every enabled vendor
+   exporter (Splunk, Datadog, Elastic, Chronicle, XSIAM, Snowflake,
+   Sentinel, Wazuh, syslog, OCSF).
+
+The result: behavior observed by *any* technique becomes a standardized
+OCSF Category 7 record that lands in the analyst's SIEM — and, when a
+policy says so, gets blocked at the proxy in the same pass.
 
 ---
 
@@ -138,13 +240,13 @@ M365 Copilot, Edge Copilot, Windows Copilot, Copilot Studio (high), Bing Copilot
 
 Claude Computer Use, OpenAI Operator, Browser Use, Browserbase, Stagehand.
 
-To extend coverage, edit `adr_system/cosai-community/rules/agent-signatures.json`, then regenerate `checksums.sha256` with `scripts/generate-checksums.sh`. Run `python -m agent.main verify` to confirm the agent will accept the update.
+To extend coverage, edit `adr_system/cosai-community/rules/agent-signatures.json`, then regenerate `checksums.sha256` with `scripts/generate-checksums.sh`. Run `adr-agent verify` to confirm the agent will accept the update.
 
 ---
 
 ## AI Telemetry: CoSAI / AITF schema
 
-AgentDR's telemetry follows the **CoSAI AI Telemetry Framework (AITF)** as described in [`girdav01/aitf`](https://github.com/girdav01/aitf), which defines an OCSF-style **Category 7** for AI-specific events. Every `EventRecord` (see `adr_system/agent/models.py`) is shaped against this schema so that events are SIEM-ready without a translation layer.
+AgentDR's telemetry follows the **CoSAI AI Telemetry Framework (AITF)** as described in [`girdav01/aitf`](https://github.com/girdav01/aitf), which defines an OCSF-style **Category 7** for AI-specific events. Every `EventRecord` (see `adr_system/rust_agent/src/models.rs`) is shaped against this schema so that events are SIEM-ready without a translation layer.
 
 ### Event classes (`class_uid`)
 
@@ -179,7 +281,7 @@ Every event carries an OpenTelemetry-style `trace_id` (32 hex) and `span_id` (16
 
 ### Detection rule catalog (`AITF-DET-001` → `AITF-DET-020`)
 
-Defined in `adr_system/cosai-community/policies/detection-rules.json` and wired into the engine via `agent/models.py::DETECTION_RULES`:
+Defined in `adr_system/cosai-community/policies/detection-rules.json` and wired into the engine via `adr_system/rust_agent/src/models.rs::detection_rules()`:
 
 | ID | Rule | Category | OWASP | OCSF Class |
 |---|---|---|---|---:|
@@ -271,14 +373,21 @@ Defined in `adr_system/cosai-community/policies/detection-rules.json` and wired 
 ### 1. Run the agent locally
 
 ```bash
-cd adr_system
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-python -m agent.main config add-watch ~/Documents
-python -m agent.main start
+cd adr_system/rust_agent
+cargo build --release
+./target/release/adr-agent start --watch ~/Documents
 ```
 
-For HTTPS interception, configure your monitored app to use `127.0.0.1:8081` and trust the mitmproxy CA. If proxy mode fails, the agent falls back to socket sampling automatically.
+Or install a pre-built signed package — `brew install agentdr` (macOS),
+`scoop install agentdr` (Windows), or the `.deb` / `.rpm` (Linux). Then
+wire your coding agents to the loopback OTLP collector in one command:
+
+```bash
+adr-agent hooks install all --endpoint http://127.0.0.1:4318
+```
+
+Step-by-step demo walkthroughs for each OS live in
+[`docs/test-plans/`](docs/test-plans/).
 
 ### 2. Run the dashboard locally
 
@@ -294,31 +403,52 @@ The dashboard runs on `http://localhost:3000`. Sign up to create an organization
 
 ### 3. Push agent events to the dashboard
 
-```bash
-python -m agent.main config set server_push.enabled true
-python -m agent.main config set server_push.endpoint "http://localhost:3000/api/sync"
-python -m agent.main config set server_push.api_key "<org api key from dashboard>"
+Add a `server_push` block to `config.toml` (next to the agent's `--root`),
+or enable any of the ten vendor exporters under `[exporters.*]`:
+
+```toml
+[server_push]
+enabled  = true
+endpoint = "http://localhost:3000/api/sync"
+api_key  = "<org api key from dashboard>"
 ```
 
 ### 4. Refresh and verify the rule pack
 
 ```bash
-python -m agent.main update    # pull latest cosai-community rules
-python -m agent.main verify    # SHA-256 integrity check
+adr-agent update    # pull latest cosai-community rules
+adr-agent verify    # SHA-256 integrity check
 ```
 
 ---
 
 ## Status & limitations
 
-This is a **prototype**, not a production EDR. Known caveats:
+AgentDR is **research-grade software**, not a hardened commercial EDR.
+Current state and known caveats:
 
-- **Inference content (7001, 7005)** is currently scaffolded; the proxy add-on captures request metadata but does not yet score prompts for injection or extract token counts from response bodies.
-- **Tool / MCP execution events** require an in-process hook in the host agent runtime; AgentDR currently infers these from process and file-system signals.
-- **Cost / token usage** fields are present on the schema but not yet populated by the proxy.
-- **Alert deduplication** is per-process / per-window only; multi-host correlation lives in the dashboard layer and is not yet implemented.
+- **Tool / MCP execution events** are captured directly via the OTLP
+  ingest path (technique 4) and the MCP stdio-proxy (technique 7) when
+  the runtime hooks are installed; without hooks, AgentDR still infers
+  them from process and file-system signals, but with lower fidelity.
+- **Token / cost fields** are populated from OTLP `gen_ai.usage.*`
+  attributes; agents that don't emit them leave those fields empty.
+- **macOS / Windows kernel telemetry** ships as a documented posture
+  (EndpointSecurity sidecar / ETW providers) rather than a built-in
+  collector — only Linux `NETLINK_AUDIT` runs in-process today.
+- **Prompt-injection scoring (7005)** emits events but does not yet
+  classify prompt content — AgentDR observes and forwards; correlation
+  is left to the SIEM.
+- **Inline TLS** is hostname-level (CONNECT SNI) only; AgentDR does not
+  ship an MITM CA.
 
-Contributions to the rule pack — especially new agent signatures and AI endpoint patterns — are welcome via the [`cosai-community/docs/CONTRIBUTING.md`](adr_system/cosai-community/docs/CONTRIBUTING.md) guide.
+Multi-host correlation, per-agent UEBA baselining, kill-chain replay,
+the ten vendor exporters, and inline policy blocking are all implemented
+— see the technique inventory above.
+
+Contributions to the rule pack — especially new agent signatures, AI
+endpoint patterns, and policy-as-code rules — are welcome via the
+[`cosai-community/docs/CONTRIBUTING.md`](adr_system/cosai-community/docs/CONTRIBUTING.md) guide.
 
 ## License
 
