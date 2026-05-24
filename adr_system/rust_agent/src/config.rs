@@ -49,7 +49,38 @@ pub struct Config {
 
     #[serde(default)]
     pub browser: BrowserConfig,
+
+    #[serde(default)]
+    pub watchdog: WatchdogConfig,
 }
+
+// ── Tier 7 — self-protection / watchdog ───────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WatchdogConfig {
+    /// Periodically re-hash AgentDR's own configs, the rule pack, the
+    /// binary, and every installed runtime-hook config; emit class_uid
+    /// 7008 events when an AgentDR marker is removed or a tracked file
+    /// disappears (i.e. when a monitored agent attempts to escape
+    /// surveillance).
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Polling interval (minimum 5s). Default 30s.
+    #[serde(default = "default_watchdog_interval")]
+    pub interval_seconds: u64,
+    /// When true, re-install the AgentDR hook automatically if its
+    /// marker disappears from a tracked config (recommended for
+    /// production fleets; off for dev/test where operators may want to
+    /// remove a hook by hand).
+    #[serde(default)]
+    pub self_heal: bool,
+}
+impl Default for WatchdogConfig {
+    fn default() -> Self {
+        Self { enabled: true, interval_seconds: default_watchdog_interval(), self_heal: false }
+    }
+}
+fn default_watchdog_interval() -> u64 { 30 }
 
 // ── Tier 5 policy + inline proxy ───────────────────────────────────────
 
@@ -621,6 +652,7 @@ impl Default for Config {
             proxy: ProxyConfig::default(),
             kernel: KernelConfig::default(),
             browser: BrowserConfig::default(),
+            watchdog: WatchdogConfig::default(),
         }
     }
 }

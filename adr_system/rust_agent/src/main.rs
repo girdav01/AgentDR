@@ -5,6 +5,7 @@
 //! from local AI runtimes (Claude Code, Codex CLI, Cursor, Aider), inventories
 //! and wraps MCP servers, and emits OCSF Category 7 events.
 
+mod agents;
 mod config;
 mod detectors;
 mod engine;
@@ -19,6 +20,7 @@ mod policy;
 mod proxy;
 mod shell;
 mod storage;
+mod watchdog;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -85,6 +87,12 @@ enum Command {
         action: ShellCmd,
     },
 
+    /// Multi-tool agent inventory (Tier 7).
+    Agents {
+        #[command(subcommand)]
+        action: AgentsCmd,
+    },
+
     /// Run the inline blocking HTTP CONNECT proxy in standalone mode (Tier 5).
     Proxy {
         /// Bind address (default 127.0.0.1:8080).
@@ -105,6 +113,17 @@ enum PolicyCmd {
         /// Path to a JSON file containing one EventRecord. If omitted, stdin is used.
         #[arg(long)]
         file: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum AgentsCmd {
+    /// Show every supported AI agent on this host: binary on $PATH,
+    /// hook-install state, configured MCP servers, currently running PIDs.
+    List {
+        /// Emit JSON instead of the human-readable table.
+        #[arg(long, default_value_t = false)]
+        json: bool,
     },
 }
 
@@ -270,6 +289,15 @@ async fn main() {
             println!("{}", serde_json::to_string_pretty(&decision).unwrap());
             if matches!(decision.action, policy::Action::Block) {
                 std::process::exit(1);
+            }
+        }
+
+        Command::Agents { action: AgentsCmd::List { json } } => {
+            let inv = agents::list();
+            if json {
+                println!("{}", serde_json::to_string_pretty(&inv).unwrap());
+            } else {
+                print!("{}", agents::render_table(&inv));
             }
         }
 

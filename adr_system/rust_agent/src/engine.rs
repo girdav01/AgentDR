@@ -13,6 +13,7 @@ use crate::monitors::{
 use crate::policy::PolicyEngine;
 use crate::proxy::InlineProxy;
 use crate::storage::{EventPusher, JsonlStore};
+use crate::watchdog::WatchdogMonitor;
 use serde_json::json;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -149,6 +150,20 @@ impl AgentEngine {
             let group = self.config.kernel.audit_multicast_group;
             tokio::spawn(async move {
                 KernelMonitor::new(group, kern_tx).run(kern_shutdown).await;
+            });
+        }
+
+        // ── Tier 7: self-protection / watchdog ──
+        if self.config.watchdog.enabled {
+            let wd_tx = event_tx.clone();
+            let wd_shutdown = shutdown_rx.clone();
+            let wd_cfg = self.config.watchdog.clone();
+            let root = self.root_path.clone();
+            let endpoint = format!("http://{}", self.config.otlp.bind);
+            tokio::spawn(async move {
+                WatchdogMonitor::new(wd_cfg, root, endpoint, wd_tx)
+                    .run(wd_shutdown)
+                    .await;
             });
         }
 

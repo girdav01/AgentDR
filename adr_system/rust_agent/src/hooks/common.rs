@@ -11,6 +11,14 @@ use std::path::{Path, PathBuf};
 pub const MARKER_KEY: &str = "_agentdr";
 pub const MARKER_VALUE: &str = "AgentDR managed — do not edit by hand";
 
+/// True if the given file content carries any AgentDR-placed marker.
+/// Works across all hook config formats (JSON keys, TOML/YAML banners,
+/// wrapper-script comments) because every installer writes either the
+/// JSON key, the marker value string, or both.
+pub fn has_marker(content: &str) -> bool {
+    content.contains(MARKER_KEY) || content.contains(MARKER_VALUE)
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HookState {
     pub installed: bool,
