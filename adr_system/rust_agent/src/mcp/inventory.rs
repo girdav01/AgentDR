@@ -56,8 +56,13 @@ pub fn scan() -> InventoryReport {
         let Ok(body) = std::fs::read_to_string(&path) else { continue };
         let Ok(value): Result<Value, _> = serde_json::from_str(&body) else { continue };
 
-        // Most runtimes use `mcpServers`, Continue uses `mcpServers` too.
-        let servers_map = value.get("mcpServers").and_then(|v| v.as_object()).cloned();
+        // Different runtimes spell the MCP block differently:
+        //   Cursor / Claude / Windsurf / Continue / VS Code  → `mcpServers`
+        //   OpenCode                                          → `mcp`
+        let servers_map = value.get("mcpServers")
+            .or_else(|| value.get("mcp"))
+            .and_then(|v| v.as_object())
+            .cloned();
         if let Some(map) = servers_map {
             for (name, def) in map {
                 let server = parse_server(&runtime, &path, &name, &def);
@@ -78,6 +83,7 @@ fn candidate_paths() -> Vec<(String, PathBuf)> {
         out.push(("claude-code".into(),    h.join(".claude").join("mcp.json")));
         out.push(("windsurf".into(),       h.join(".codeium").join("windsurf").join("mcp_config.json")));
         out.push(("continue".into(),       h.join(".continue").join("config.json")));
+        out.push(("opencode".into(),       h.join(".config").join("opencode").join("opencode.json")));
 
         // Claude Desktop varies by OS
         #[cfg(target_os = "macos")]
@@ -92,8 +98,9 @@ fn candidate_paths() -> Vec<(String, PathBuf)> {
 
     // Project-level configs in current working directory
     if let Ok(cwd) = std::env::current_dir() {
-        out.push(("cursor-project".into(), cwd.join(".cursor").join("mcp.json")));
-        out.push(("vscode-project".into(), cwd.join(".vscode").join("mcp.json")));
+        out.push(("cursor-project".into(),   cwd.join(".cursor").join("mcp.json")));
+        out.push(("vscode-project".into(),   cwd.join(".vscode").join("mcp.json")));
+        out.push(("opencode-project".into(), cwd.join("opencode.json")));
     }
 
     // Operator-supplied extra config
@@ -104,18 +111,43 @@ fn candidate_paths() -> Vec<(String, PathBuf)> {
 }
 
 fn parse_server(runtime: &str, path: &Path, name: &str, def: &Value) -> DiscoveredServer {
-    let command = def.get("command").and_then(|v| v.as_str()).map(String::from);
-    let args: Vec<String> = def.get("args").and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
-        .unwrap_or_default();
+    // `command` can be either a string (Cursor / Claude Desktop / Continue)
+    // or a string array (OpenCode: `["adr-agent", "mcp", "wrap", ...]`).
+    // Normalise to (head_command, args[]) so both layouts produce the same
+    // event shape.
+    let (command, args): (Option<String>, Vec<String>) = match def.get("command") {
+        Some(Value::String(s)) => {
+            let args = def.get("args").and_then(|v| v.as_array())
+                .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                .unwrap_or_default();
+            (Some(s.clone()), args)
+        }
+        Some(Value::Array(arr)) => {
+            let mut iter = arr.iter().filter_map(|x| x.as_str().map(String::from));
+            let head = iter.next();
+            let rest: Vec<String> = iter.collect();
+            (head, rest)
+        }
+        _ => (None, Vec::new()),
+    };
+
     let url = def.get("url").and_then(|v| v.as_str()).map(String::from);
-    let transport = if url.is_some() {
+    let transport = if let Some(t) = def.get("type").and_then(|v| v.as_str()) {
+        // OpenCode uses `type: "local"` or `type: "remote"`.
+        match t {
+            "local"  => "stdio".to_string(),
+            "remote" => def.get("transport").and_then(|v| v.as_str()).unwrap_or("http").to_string(),
+            other    => other.to_string(),
+        }
+    } else if url.is_some() {
         def.get("transport").and_then(|v| v.as_str()).unwrap_or("http").to_string()
     } else {
         "stdio".to_string()
     };
+    // OpenCode spells the env block `environment`; everyone else uses `env`.
     let env_keys: Vec<String> = def
         .get("env")
+        .or_else(|| def.get("environment"))
         .and_then(|v| v.as_object())
         .map(|m| m.keys().cloned().collect())
         .unwrap_or_default();

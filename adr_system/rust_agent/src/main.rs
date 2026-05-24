@@ -125,7 +125,7 @@ enum ShellCmd {
 enum HooksCmd {
     /// Install hooks for one or all supported AI runtimes.
     Install {
-        /// Target: claude-code | cursor | codex | aider | all
+        /// Target: claude-code | cursor | codex | aider | opencode | all
         target: String,
         /// OTLP endpoint hooks should send to. Default http://127.0.0.1:4318
         #[arg(long, default_value = "http://127.0.0.1:4318")]
@@ -133,7 +133,7 @@ enum HooksCmd {
     },
     /// Remove hooks previously installed by AgentDR.
     Uninstall {
-        /// Target: claude-code | cursor | codex | aider | all
+        /// Target: claude-code | cursor | codex | aider | opencode | all
         target: String,
     },
     /// Print install status for all supported runtimes.
