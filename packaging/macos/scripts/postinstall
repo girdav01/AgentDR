@@ -53,5 +53,13 @@ fi
 launchctl bootstrap system "${PLIST}"
 launchctl enable "system/${LABEL}"
 
+# 5. Tier 8 — auto-discovery on install. Runs non-interactively against
+# the policy/discovery.yaml shipped in the rule pack; safe to invoke
+# repeatedly. Operators can rerun:
+#   sudo /usr/local/bin/adr-agent --root /var/lib/agentdr discovery scan --apply
+if [ -x /usr/local/bin/adr-agent ]; then
+  /usr/local/bin/adr-agent --root "${DATA_DIR}" discovery scan --apply >/dev/null 2>&1 || true
+fi
+
 echo "AgentDR installed and started."
 exit 0

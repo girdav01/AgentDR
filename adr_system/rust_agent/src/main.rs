@@ -8,6 +8,7 @@
 mod agents;
 mod config;
 mod detectors;
+mod discovery;
 mod engine;
 mod exporters;
 mod hooks;
@@ -93,6 +94,12 @@ enum Command {
         action: AgentsCmd,
     },
 
+    /// Auto-discover AI agents on the host (Tier 8).
+    Discovery {
+        #[command(subcommand)]
+        action: DiscoveryCmd,
+    },
+
     /// Run the inline blocking HTTP CONNECT proxy in standalone mode (Tier 5).
     Proxy {
         /// Bind address (default 127.0.0.1:8080).
@@ -122,6 +129,37 @@ enum AgentsCmd {
     /// hook-install state, configured MCP servers, currently running PIDs.
     List {
         /// Emit JSON instead of the human-readable table.
+        #[arg(long, default_value_t = false)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum DiscoveryCmd {
+    /// Run a one-shot scan. Reports only by default; pass --apply to
+    /// honour the configured [discovery].mode (policy / automatic /
+    /// interactive / off).
+    Scan {
+        #[arg(long, default_value_t = false)]
+        json: bool,
+        /// Also apply per the [discovery].mode (install hooks, record
+        /// decisions). Safe to run repeatedly; idempotent.
+        #[arg(long, default_value_t = false)]
+        apply: bool,
+        /// OTLP endpoint hooks should point at when installing
+        /// (default http://127.0.0.1:4318).
+        #[arg(long, default_value = "http://127.0.0.1:4318")]
+        endpoint: String,
+    },
+    /// Interactive prompt loop: ask the local user about every
+    /// newly-discovered agent that doesn't already have a recorded
+    /// decision. Refuses to run without a TTY.
+    Prompt {
+        #[arg(long, default_value = "http://127.0.0.1:4318")]
+        endpoint: String,
+    },
+    /// Print recorded decisions from the state file.
+    Status {
         #[arg(long, default_value_t = false)]
         json: bool,
     },
@@ -298,6 +336,58 @@ async fn main() {
                 println!("{}", serde_json::to_string_pretty(&inv).unwrap());
             } else {
                 print!("{}", agents::render_table(&inv));
+            }
+        }
+
+        Command::Discovery { action: DiscoveryCmd::Scan { json, apply, endpoint } } => {
+            let cfg = config::Config::load(&config_path);
+            if apply {
+                let rep = discovery::scan_and_apply(&cfg.discovery, &cli.root, &endpoint);
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&rep).unwrap());
+                } else {
+                    print!("{}", discovery::scan::render_table(&rep.scanned));
+                    println!();
+                    println!("Mode: {}", rep.mode);
+                    for row in &rep.actions {
+                        println!("  {:<13} → {:?}  ({})  result={:?}",
+                                 row.agent_id, row.action, row.from, row.result);
+                    }
+                }
+            } else {
+                let rep = discovery::scan_only();
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&rep).unwrap());
+                } else {
+                    print!("{}", discovery::scan::render_table(&rep));
+                }
+            }
+        }
+
+        Command::Discovery { action: DiscoveryCmd::Prompt { endpoint } } => {
+            let cfg = config::Config::load(&config_path);
+            let rep = discovery::scan_only();
+            let state_path = cli.root.join(&cfg.discovery.state_file);
+            match discovery::prompt::run(&rep, &endpoint, &state_path) {
+                Ok(n) => println!("\ndiscovery: installed {} hook(s); state saved to {}", n, state_path.display()),
+                Err(e) => { eprintln!("discovery prompt failed: {e}"); std::process::exit(1); }
+            }
+        }
+
+        Command::Discovery { action: DiscoveryCmd::Status { json } } => {
+            let cfg = config::Config::load(&config_path);
+            let state_path = cli.root.join(&cfg.discovery.state_file);
+            let st = discovery::state::DiscoveryState::load(&state_path).unwrap_or_default();
+            if json {
+                println!("{}", serde_json::to_string_pretty(&st).unwrap());
+            } else if st.decisions.is_empty() {
+                println!("(no decisions recorded — run `adr-agent discovery scan --apply` or `discovery prompt`)");
+            } else {
+                println!("AGENT          DECISION  SOURCE        DECIDED AT");
+                println!("─────────────  ────────  ────────────  ───────────────────────");
+                for (id, d) in &st.decisions {
+                    println!("{:<13}  {:<8}  {:<12}  {}", id, d.decision, d.source, d.decided_at);
+                }
             }
         }
 
