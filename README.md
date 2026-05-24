@@ -65,6 +65,7 @@ adr-agent start --watch ~/Projects      # foreground with live event stream
 adr-agent verify                        # verify SHA-256 checksums of rule files
 adr-agent update                        # refresh community rule pack
 adr-agent hooks install all             # wire Claude Code / Cursor / Codex / Aider / OpenCode to OTLP
+adr-agent agents list                   # multi-tool inventory: hooks, MCP, running PIDs per agent
 adr-agent mcp inventory                 # enumerate MCP server configs
 adr-agent mcp wrap --name x -- <cmd>    # stdio-proxy + record an MCP server
 adr-agent otlp                          # standalone OTLP collector
@@ -155,6 +156,7 @@ normalized `EventRecord`.
 | 10 | **Browser CDP attach** | page open / navigate / close by browser-use agents | polls the Chrome DevTools `/json` endpoint | `class_uid 7002` with destination URL |
 | 11 | **Inline proxy decisions** | every CONNECT an agent attempts, allowed or denied | loopback HTTP CONNECT proxy consulted by `HTTPS_PROXY` | `7001/7002` on allow, `7008` BLOCKED on deny |
 | 12 | **Credential attribution** | joins a credential-file read to the agent process responsible | 10-minute rolling window of agent `process_started` events | enriches the `AITF-DET-018` alert with a `candidate_agents` list |
+| 13 | **Self-protection / watchdog** | hashes AgentDR's own config, the rule pack, the binary, and every installed runtime-hook config; fires when an AgentDR marker is removed or a tracked file disappears | periodic SHA-256 + marker presence check | `class_uid 7008` (critical) on evasion, optional self-heal that re-installs the hook |
 
 ### From observation to a normalized event
 
@@ -195,6 +197,76 @@ Once an event is on the bus it is, in order:
 The result: behavior observed by *any* technique becomes a standardized
 OCSF Category 7 record that lands in the analyst's SIEM — and, when a
 policy says so, gets blocked at the proxy in the same pass.
+
+---
+
+## Self-protection and multi-tool monitoring
+
+### Self-protection (watchdog)
+
+AgentDR ships a built-in watchdog that defends its own footprint on the
+endpoint — and in particular detects when a monitored AI agent tries to
+*escape surveillance* by removing AgentDR's marker from its config.
+
+What it tracks:
+
+* The agent's own `config.toml`
+* The AgentDR binary on disk
+* The community rule pack (`cosai-community/rules/*.json`,
+  `policies/*.json`, `policies/policies.yaml`)
+* Every installed runtime-hook config (Claude Code, Cursor, Codex, Aider,
+  OpenCode)
+
+What it detects (per tick, default 30 s):
+
+| Observation | Severity | Event |
+|---|---|---|
+| Hook config hash changed, AgentDR marker still present | `low` | `watchdog_config_changed` — likely operator edit |
+| Hook config hash changed, marker MISSING (was present) | `critical` | **`watchdog_evasion_detected`** — class_uid 7008, status=BLOCKED |
+| Tracked file deleted | `critical` | `watchdog_file_missing` |
+| Agent config edited | `medium` | `watchdog_config_changed` |
+| Rule / policy pack edited | `high` | `watchdog_rule_pack_changed` |
+| Binary on disk replaced | `critical` | `watchdog_binary_changed` |
+
+Configure under `[watchdog]`:
+
+```toml
+[watchdog]
+enabled          = true
+interval_seconds = 30
+self_heal        = true   # on evasion, automatically re-install the missing hook
+```
+
+When `self_heal = true`, an evasion detection triggers an immediate
+re-run of the matching `hooks install <agent>` so the marker (and the
+OTLP wiring it carries) is restored within one tick.
+
+### Multi-tool monitoring on a single host
+
+Developers and AI engineers routinely run **several coding agents
+side by side** — Claude Code in one terminal, Cursor in the IDE,
+OpenCode for a quick session, Codex CLI in CI. AgentDR is designed for
+this from the bus down:
+
+* The process monitor matches every running process against every
+  signature; no rule limits AgentDR to one agent at a time.
+* Each runtime hook sets a distinct `OTEL_SERVICE_NAME`
+  (`claude-code`, `cursor`, `codex`, `aider`, `opencode`), so the
+  single loopback OTLP collector trivially demuxes per-agent.
+* Every event carries `agent_name` + `agent_framework`, every UEBA
+  baseline is keyed by `(host, user, agent)`, and the Sessions
+  dashboard joins activity across multiple agents through `trace_id`.
+
+To see the live picture for the current host:
+
+```bash
+adr-agent agents list                 # human-readable table
+adr-agent agents list --json          # machine-readable for ops automation
+```
+
+The table shows, per agent: whether its binary is on `$PATH`, whether
+AgentDR's hook is installed (and to what endpoint), which MCP servers
+it has configured, and which PIDs (if any) are running right now.
 
 ---
 
