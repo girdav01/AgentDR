@@ -64,7 +64,7 @@ A cross-platform **Rust** agent (Windows, macOS, Linux) that runs on the monitor
 adr-agent start --watch ~/Projects      # foreground with live event stream
 adr-agent verify                        # verify SHA-256 checksums of rule files
 adr-agent update                        # refresh community rule pack
-adr-agent hooks install all             # wire Claude Code / Cursor / Codex / Aider to OTLP
+adr-agent hooks install all             # wire Claude Code / Cursor / Codex / Aider / OpenCode to OTLP
 adr-agent mcp inventory                 # enumerate MCP server configs
 adr-agent mcp wrap --name x -- <cmd>    # stdio-proxy + record an MCP server
 adr-agent otlp                          # standalone OTLP collector
@@ -147,7 +147,7 @@ normalized `EventRecord`.
 | 2 | **Process-table polling** | process start / stop; names, exe paths and command lines matched to AI-agent signatures | `/proc` (Linux), `libproc` (macOS), `ToolHelp` (Windows) via `sysinfo` | `class_uid 7002`; `agent_name` / `agent_framework` populated from `agent-signatures.json` |
 | 3 | **Network observation** | outbound connections to AI provider & messaging hosts | mitm-style HTTP proxy *or* socket sampling + DNS | `class_uid 7001` (AI API) / `7007` (messaging) |
 | 4 | **OTLP `gen_ai.*` ingest** | prompts, tool calls, token usage, approvals — emitted by the agents themselves | loopback OTLP/HTTP server; OpenTelemetry GenAI semantic conventions | `7001` inference, `7003` tool, `7004` MCP, `7007` approval |
-| 5 | **Runtime hooks** | wires Claude Code / Cursor / Codex / Aider to emit (4) in the first place | edits each agent's own config (`settings.json`, `mcp.json`, `config.toml`) | enables technique 4 with semantic certainty (no guessing) |
+| 5 | **Runtime hooks** | wires Claude Code / Cursor / Codex / Aider / OpenCode to emit (4) in the first place | edits each agent's own config (`settings.json`, `mcp.json`, `config.toml`, `opencode.json`) | enables technique 4 with semantic certainty (no guessing) |
 | 6 | **MCP inventory** | which MCP servers are declared, where, with which transport and which secret env keys | scans 8 known config locations across every runtime | `class_uid 7004`, `activity_id 2 (Read)` |
 | 7 | **MCP stdio interception** | every JSON-RPC request/response to a wrapped MCP server | `adr-agent mcp wrap` re-execs the server and proxies stdin/stdout | `class_uid 7004`; `tool_name` = JSON-RPC method |
 | 8 | **Kernel audit** | syscall / path records from the OS audit subsystem | `NETLINK_AUDIT` multicast (Linux); EndpointSecurity / ETW posture on macOS / Windows | `class_uid 7002`, `activity_id 6 (Detect)` |
@@ -216,6 +216,7 @@ The agent rule pack ships with detectors for five categories. Each entry below s
 | Cline | VSCode Extension | `cline` |
 | Augment Code | VSCode Extension | `augment` |
 | Continue.dev | VSCode Extension | `continue` |
+| OpenCode | OpenCode CLI | `opencode` |
 
 ### General-purpose autonomous agents (medium / high risk)
 

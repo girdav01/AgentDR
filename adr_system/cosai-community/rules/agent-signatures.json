@@ -20,6 +20,7 @@
     { "id": "cline",            "name": "Cline",                "framework": "VSCode Extension",   "category": "coding",     "risk": "low",    "process_patterns": ["cline"] },
     { "id": "augment-code",     "name": "Augment Code",         "framework": "VSCode Extension",   "category": "coding",     "risk": "low",    "process_patterns": ["augment"] },
     { "id": "continue-dev",     "name": "Continue.dev",         "framework": "VSCode Extension",   "category": "coding",     "risk": "low",    "process_patterns": ["continue"] },
+    { "id": "opencode",         "name": "OpenCode",             "framework": "OpenCode CLI",       "category": "coding",     "risk": "low",    "process_patterns": ["opencode"] },
 
     { "id": "openclaw",         "name": "OpenClaw",             "framework": "OpenClaw Runtime",   "category": "general",    "risk": "high",   "process_patterns": ["openclaw", "moltbot", "clawdbot"] },
     { "id": "nemoclaw",         "name": "NemoClaw",             "framework": "NVIDIA NemoClaw",    "category": "general",    "risk": "medium", "process_patterns": ["nemoclaw"] },
