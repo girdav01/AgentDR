@@ -52,7 +52,58 @@ pub struct Config {
 
     #[serde(default)]
     pub watchdog: WatchdogConfig,
+
+    #[serde(default)]
+    pub discovery: DiscoveryConfig,
 }
+
+// ── Tier 8 — auto-discovery of AI agents on the host ──────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscoveryConfig {
+    /// Master switch. When false, no discovery scans run and no
+    /// auto-install happens; operators must use `hooks install <agent>`
+    /// explicitly.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Decision mode applied to discovered agents that don't have a
+    /// recorded decision yet:
+    ///   - `off`         — discover & report only; never install
+    ///   - `interactive` — prompt the local user (TTY required)
+    ///   - `policy`      — apply `discovery.yaml` (default)
+    ///   - `automatic`   — install every supported agent that's found
+    #[serde(default = "default_discovery_mode")]
+    pub mode: String,
+    /// Run discovery + apply at agent startup.
+    #[serde(default = "default_true")]
+    pub scan_on_start: bool,
+    /// Periodic re-scan interval in hours (0 = disabled). Default 24h.
+    #[serde(default = "default_discovery_interval")]
+    pub scan_interval_hours: u64,
+    /// Where to persist remembered user decisions. Default
+    /// `<root>/runtime/discovery-state.json`.
+    #[serde(default = "default_discovery_state")]
+    pub state_file: String,
+    /// Path to an override discovery-policy YAML. Empty = use the
+    /// shipped `cosai-community/policies/discovery.yaml`.
+    #[serde(default)]
+    pub policy_path: String,
+}
+impl Default for DiscoveryConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            mode: default_discovery_mode(),
+            scan_on_start: true,
+            scan_interval_hours: default_discovery_interval(),
+            state_file: default_discovery_state(),
+            policy_path: String::new(),
+        }
+    }
+}
+fn default_discovery_mode() -> String { "policy".into() }
+fn default_discovery_interval() -> u64 { 24 }
+fn default_discovery_state() -> String { "runtime/discovery-state.json".into() }
 
 // ── Tier 7 — self-protection / watchdog ───────────────────────────────
 
@@ -653,6 +704,7 @@ impl Default for Config {
             kernel: KernelConfig::default(),
             browser: BrowserConfig::default(),
             watchdog: WatchdogConfig::default(),
+            discovery: DiscoveryConfig::default(),
         }
     }
 }

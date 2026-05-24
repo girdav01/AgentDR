@@ -40,5 +40,15 @@ if [ -d /run/systemd/system ]; then
   systemctl restart agentdr.service || true
 fi
 
+# Tier 8 — auto-discovery on install. We run a non-interactive scan that
+# honours the [discovery].mode shipped in /etc/agentdr/config.toml (policy
+# mode by default). This installs hooks for the agents that policy says
+# should be monitored automatically; the operator can re-run
+#   adr-agent discovery scan --apply
+# or use the interactive prompt mode later.
+if [ -x /usr/bin/adr-agent ]; then
+  /usr/bin/adr-agent --root /var/lib/agentdr discovery scan --apply >/dev/null 2>&1 || true
+fi
+
 #DEBHELPER#
 exit 0

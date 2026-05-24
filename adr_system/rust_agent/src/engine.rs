@@ -10,6 +10,7 @@ use crate::monitors::{
     browser::BrowserMonitor, file::FileMonitor, kernel::KernelMonitor,
     network::NetworkMonitor, process::ProcessMonitor,
 };
+use crate::discovery;
 use crate::policy::PolicyEngine;
 use crate::proxy::InlineProxy;
 use crate::storage::{EventPusher, JsonlStore};
@@ -151,6 +152,68 @@ impl AgentEngine {
             tokio::spawn(async move {
                 KernelMonitor::new(group, kern_tx).run(kern_shutdown).await;
             });
+        }
+
+        // ── Tier 8: auto-discovery ──
+        if self.config.discovery.enabled {
+            let endpoint = format!("http://{}", self.config.otlp.bind);
+            // (a) on-start scan
+            if self.config.discovery.scan_on_start {
+                let disc_cfg = self.config.discovery.clone();
+                let root = self.root_path.clone();
+                let ep = endpoint.clone();
+                let disc_tx = event_tx.clone();
+                tokio::spawn(async move {
+                    let rep = discovery::scan_and_apply(&disc_cfg, &root, &ep);
+                    let mut ev = EventRecord::new("discovery_scan_completed", json!({
+                        "mode":    rep.mode,
+                        "found":   rep.scanned.agents.len(),
+                        "actions": rep.actions,
+                    }), "low");
+                    ev.class_uid   = Some(CLASS_AGENT_ACTION);
+                    ev.type_uid    = Some(CLASS_AGENT_ACTION * 100 + ACTIVITY_DETECT);
+                    ev.activity_id = Some(ACTIVITY_DETECT);
+                    ev.source      = Some("discovery".into());
+                    ev.message     = Some(format!(
+                        "discovery scan: {} agent(s) found",
+                        rep.scanned.agents.len()
+                    ));
+                    let _ = disc_tx.send(ev);
+                });
+            }
+            // (b) periodic re-scan
+            if self.config.discovery.scan_interval_hours > 0 {
+                let period = self.config.discovery.scan_interval_hours;
+                let disc_cfg = self.config.discovery.clone();
+                let root = self.root_path.clone();
+                let ep = endpoint.clone();
+                let disc_tx = event_tx.clone();
+                let mut disc_shutdown = shutdown_rx.clone();
+                tokio::spawn(async move {
+                    let mut ticker = interval(Duration::from_secs(period * 3600));
+                    ticker.tick().await; // skip immediate fire (covered above)
+                    loop {
+                        tokio::select! {
+                            _ = ticker.tick() => {
+                                let rep = discovery::scan_and_apply(&disc_cfg, &root, &ep);
+                                let mut ev = EventRecord::new("discovery_scan_completed", json!({
+                                    "mode": rep.mode,
+                                    "found": rep.scanned.agents.len(),
+                                    "actions": rep.actions,
+                                    "trigger": "scheduled",
+                                }), "low");
+                                ev.class_uid   = Some(CLASS_AGENT_ACTION);
+                                ev.type_uid    = Some(CLASS_AGENT_ACTION * 100 + ACTIVITY_DETECT);
+                                ev.activity_id = Some(ACTIVITY_DETECT);
+                                ev.source      = Some("discovery".into());
+                                ev.message     = Some(format!("scheduled discovery scan: {} agent(s)", rep.scanned.agents.len()));
+                                let _ = disc_tx.send(ev);
+                            }
+                            _ = disc_shutdown.changed() => break,
+                        }
+                    }
+                });
+            }
         }
 
         // ── Tier 7: self-protection / watchdog ──

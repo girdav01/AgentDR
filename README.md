@@ -66,6 +66,9 @@ adr-agent verify                        # verify SHA-256 checksums of rule files
 adr-agent update                        # refresh community rule pack
 adr-agent hooks install all             # wire Claude Code / Cursor / Codex / Aider / OpenCode to OTLP
 adr-agent agents list                   # multi-tool inventory: hooks, MCP, running PIDs per agent
+adr-agent discovery scan                # auto-discover AI agents on this host
+adr-agent discovery scan --apply        # ...and install hooks per [discovery].mode
+adr-agent discovery prompt              # interactive: ask the user about each new agent
 adr-agent mcp inventory                 # enumerate MCP server configs
 adr-agent mcp wrap --name x -- <cmd>    # stdio-proxy + record an MCP server
 adr-agent otlp                          # standalone OTLP collector
@@ -157,6 +160,7 @@ normalized `EventRecord`.
 | 11 | **Inline proxy decisions** | every CONNECT an agent attempts, allowed or denied | loopback HTTP CONNECT proxy consulted by `HTTPS_PROXY` | `7001/7002` on allow, `7008` BLOCKED on deny |
 | 12 | **Credential attribution** | joins a credential-file read to the agent process responsible | 10-minute rolling window of agent `process_started` events | enriches the `AITF-DET-018` alert with a `candidate_agents` list |
 | 13 | **Self-protection / watchdog** | hashes AgentDR's own config, the rule pack, the binary, and every installed runtime-hook config; fires when an AgentDR marker is removed or a tracked file disappears | periodic SHA-256 + marker presence check | `class_uid 7008` (critical) on evasion, optional self-heal that re-installs the hook |
+| 14 | **Auto-discovery** | finds every AI agent on the host (PATH, install locations, hook configs, MCP entries, running PIDs) and decides what to monitor per `[discovery].mode` (interactive / policy / automatic / off) | runs on install, on startup, on schedule, on demand | hook installs + class_uid 7002 `discovery_scan_completed` events |
 
 ### From observation to a normalized event
 
@@ -267,6 +271,52 @@ adr-agent agents list --json          # machine-readable for ops automation
 The table shows, per agent: whether its binary is on `$PATH`, whether
 AgentDR's hook is installed (and to what endpoint), which MCP servers
 it has configured, and which PIDs (if any) are running right now.
+
+### Auto-discovery (Tier 8)
+
+Personal endpoints, developer laptops, CI runners and managed
+enterprise fleets each want a different policy for "*which* AI agents
+on this host should AgentDR actually monitor?" The discovery subsystem
+answers that question one of four ways, set under `[discovery].mode`:
+
+| mode | Behaviour |
+|---|---|
+| `off`         | Scan and report only; never install hooks automatically |
+| `interactive` | Prompt the local user via stdin for each newly-found agent (TTY required) |
+| `policy`      | Apply `cosai-community/policies/discovery.yaml` (default) |
+| `automatic`   | Install hooks for every supported agent that's found |
+
+Triggers:
+
+* **On install** — the macOS `.pkg` postinstall and Linux `.deb` postinst
+  both run `adr-agent discovery scan --apply` so the agent self-configures
+  during fleet rollout.
+* **On startup** — the engine runs a scan at start when
+  `[discovery].scan_on_start = true` (default).
+* **On schedule** — periodic re-scan every `[discovery].scan_interval_hours`
+  (default 24 h), so an agent that gets installed *after* AgentDR is
+  picked up automatically.
+* **On demand** — `adr-agent discovery scan [--apply]` from the shell.
+
+Evidence sources per agent: `$PATH` binary, well-known install locations
+(macOS `.app`, `/opt/`, `~/.local/bin/`, Windows `Program Files`), hook
+config presence (including the unmanaged case — "user has Aider's
+`~/.aider.conf.yml` but no AgentDR hook"), MCP entries in
+runtime-specific configs, and currently-running matched PIDs. Confidence
+scores aggregate across sources.
+
+User decisions are persisted to `<root>/runtime/discovery-state.json`
+so the user is never asked twice. Operators inspect / override with:
+
+```bash
+adr-agent discovery status              # show recorded decisions
+adr-agent discovery prompt              # interactive prompt loop
+```
+
+The default policy ships with safe choices: monitor every coding agent
+(Claude Code, Cursor, Codex, Aider, OpenCode); prompt before monitoring
+browser-use agents (Computer Use, Operator, Browser Use); skip enterprise
+copilots (M365 Copilot et al.) until an admin opts them in.
 
 ---
 
