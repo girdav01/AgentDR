@@ -10,9 +10,26 @@ license = "Apache-2.0"
 name = "adr-agent"
 path = "src/main.rs"
 
+[features]
+default = []
+# Opt-in interop with the official AITF Rust SDK (beta, not yet on crates.io).
+# Enables the conformance cross-check in src/ingest/aitf_interop.rs that keeps
+# AgentDR's OTLP->OCSF class mapping in sync with the SDK's OcsfMapper.
+#
+# To use it, also uncomment the `aitf` dependency below, then build with
+#   cargo build --features aitf-sdk
+# (The dep is left commented so the default build never needs network access to
+# the AITF git repo — an optional git dependency is still fetched at resolve
+# time, which breaks offline / CI builds.)
+aitf-sdk = []
+
 [dependencies]
 # Async runtime
 tokio = { version = "1", features = ["full"] }
+
+# Optional: official AITF Rust SDK (semconv keys + OcsfMapper) — interop only.
+# Uncomment together with the `aitf-sdk` feature mapping (aitf-sdk = ["dep:aitf"]).
+# aitf = { git = "https://github.com/girdav01/AITF.git", optional = true }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }

@@ -456,6 +456,11 @@ pub struct EventRecord {
     pub mcp_server: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub actor: Option<serde_json::Value>,
+    /// AITF 0.2 `delegation` object — agent-to-agent authorization grant/revoke
+    /// (`grantor`, `grantee`, `scope`, `ttl_seconds`, `action`). Set on events
+    /// carrying delegation telemetry (`ai_operation = delegation`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegation: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compliance: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -492,6 +497,7 @@ impl EventRecord {
             tool_name: None,
             mcp_server: None,
             actor: None,
+            delegation: None,
             compliance: None,
             security_finding: None,
             token_usage: None,

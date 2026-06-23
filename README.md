@@ -378,7 +378,7 @@ Hermes — a self-improving agent with persistent memory, agent-created skills (
 
 ## AI Telemetry: CoSAI / AITF schema
 
-AgentDR's telemetry follows the **CoSAI AI Telemetry Framework (AITF)** as described in [`girdav01/AITF`](https://github.com/girdav01/AITF). Following AITF's latest spec, AgentDR has **dropped the bespoke "Category 7"** in favour of AITF's **OCSF Class-Reuse Model**: every AI event reuses an *existing* OCSF class and carries an **`ai_operation` profile** that holds the AI-specific semantic. (This mirrors the OCSF principle of reusing classes rather than minting bespoke AI event classes — see OCSF issue [#1640](https://github.com/ocsf/ocsf-schema/issues/1640) for the proposed control-plane classes.) Every `EventRecord` (see `adr_system/rust_agent/src/models.rs`) is shaped against this schema so that events are SIEM-ready without a translation layer.
+AgentDR's telemetry follows the **CoSAI AI Telemetry Framework (AITF), v0.2** as described in [`girdav01/AITF`](https://github.com/girdav01/AITF). Following AITF 0.2, AgentDR has **dropped the bespoke "Category 7"** (whose `uid 7` collided with OCSF's released *Remediation* category) in favour of AITF's **OCSF Class-Reuse Model**: every AI event reuses an *existing* OCSF class and carries an **`ai_operation` profile** that holds the AI-specific semantic. (This mirrors the OCSF principle of reusing classes rather than minting bespoke AI event classes — see OCSF issue [#1640](https://github.com/ocsf/ocsf-schema/issues/1640) for the proposed control-plane classes.) Every `EventRecord` (see `adr_system/rust_agent/src/models.rs`) is shaped against this schema so that events are SIEM-ready without a translation layer.
 
 ### OCSF Class-Reuse Model (`ai_operation` → reused `class_uid`)
 
@@ -401,7 +401,11 @@ Data-plane events flow through the standard OCSF categories (2–6); only the co
 
 ### Semantic-convention namespaces
 
-AITF extends the OpenTelemetry GenAI conventions with dedicated namespaces; AgentDR emits attributes under: `gen_ai.*`, `mcp.*`, `skill.*`, `rag.*`, `security.*`, `compliance.*`, `cost.*`, `quality.*`, `supply_chain.*`, `identity.*`, `model_ops.*`, and `memory.security.*` (memory poisoning / integrity).
+AITF extends the OpenTelemetry GenAI conventions with dedicated namespaces; AgentDR emits attributes under: `gen_ai.*`, `mcp.*`, `skill.*`, `rag.*`, `security.*`, `compliance.*`, `cost.*`, `quality.*`, `supply_chain.*`, `identity.*`, `model_ops.*`, `asset.*`, `drift.*`, and `memory.security.*` (memory poisoning / integrity).
+
+### Delegation object (AITF 0.2)
+
+Agent-to-agent authorization is captured both as the `delegation` `ai_operation` (proposed OCSF class `9002`) and as a structured **`delegation` object** on the event — `grantor`, `grantee`, `scope`, `action` (grant/revoke), and `ttl_seconds` — populated from `delegation.*` / `gen_ai.delegation.*` span attributes by the OTLP ingest.
 
 ### Common OCSF fields on every event
 
