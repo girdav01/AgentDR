@@ -350,10 +350,11 @@ The agent rule pack ships with detectors for five categories. Each entry below s
 | BabyAGI | BabyAGI | medium |
 | SuperAGI | SuperAGI | medium |
 | ChatGPT (desktop) | OpenAI | medium |
+| Hermes Agent | Nous Research | high |
 
 ### Workflow / orchestration frameworks
 
-LangChain, CrewAI, Microsoft AutoGen, LlamaIndex, HuggingFace SmolAgents.
+LangChain, CrewAI, Microsoft AutoGen, LlamaIndex, HuggingFace SmolAgents, NVIDIA OpenShell.
 
 ### Enterprise / productivity copilots
 
@@ -364,6 +365,14 @@ M365 Copilot, Edge Copilot, Windows Copilot, Copilot Studio (high), Bing Copilot
 Claude Computer Use, OpenAI Operator, Browser Use, Browserbase, Stagehand.
 
 To extend coverage, edit `adr_system/cosai-community/rules/agent-signatures.json`, then regenerate `checksums.sha256` with `scripts/generate-checksums.sh`. Run `adr-agent verify` to confirm the agent will accept the update.
+
+#### Hermes Agent (Nous Research)
+
+Hermes — a self-improving agent with persistent memory, agent-created skills (agentskills.io), and egress to Telegram / Discord / Slack / WhatsApp / **Signal / Email** — is detected via the `hermes-agent` signature and monitored through existing techniques: its messaging endpoints (Signal + SendGrid/Mailgun/Resend/Postmark/Gmail) raise `AITF-DET-016`, its skill drops (`.hermes/skills`, `.nous/skills`, `agentskills`) trip `AITF-DET-015`/`020`, and its OpenAI-compatible providers (OpenRouter, Nous Research) are classified by the AI-endpoint pack.
+
+#### NVIDIA OpenShell
+
+[NVIDIA OpenShell](https://github.com/NVIDIA/OpenShell) — a secure-by-design sandbox/runtime + policy Gateway for autonomous agents — is supported two ways: the `nvidia-openshell` signature detects the runtime (and sandboxed agents still self-attribute), and AgentDR can **ingest OpenShell's OCSF v1.7.0 Gateway audit log** (`[openshell] enabled = true`), normalizing every allow/deny decision into the AITF schema so it flows through the same detectors, policies, and exporters. AgentDR is the detection/SIEM layer *over* OpenShell's enforcement layer. See **[docs/integrations/openshell-ingest.md](docs/integrations/openshell-ingest.md)**.
 
 ---
 
