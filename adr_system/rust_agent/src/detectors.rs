@@ -180,7 +180,9 @@ impl PatternDetector {
     ) -> EventRecord {
         let rules = detection_rules();
         let rule = rules.get(rule_id);
-        let class_uid = rule.map(|r| r.class_uid).unwrap_or(CLASS_AGENT_ACTION);
+        // Detections are findings: the rule's ai_operation yields the reused
+        // OCSF finding class (Detection 2004 / Compliance 2003 / Vulnerability 2002).
+        let op = rule.map(|r| r.op).unwrap_or(AiOperation::GuardrailEvent);
 
         let mut ev = EventRecord::new(event_type, json!({
             "rule_id": rule_id,
@@ -189,8 +191,7 @@ impl PatternDetector {
             "alert_details": details,
         }), risk);
         ev.source = Some("detector".into());
-        ev.class_uid = Some(class_uid);
-        ev.type_uid = Some(class_uid * 100 + ACTIVITY_DETECT);
+        ev.set_op(op, ACTIVITY_DETECT);
         ev.activity_id = Some(ACTIVITY_DETECT);
         ev.status_id = Some(STATUS_SUCCESS);
         ev.message = Some(format!("[{}] {}", rule_id, rule.map(|r| r.name).unwrap_or(event_type)));

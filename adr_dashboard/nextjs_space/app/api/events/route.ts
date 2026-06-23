@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
   const startDate = url.searchParams.get('startDate');
   const endDate = url.searchParams.get('endDate');
   const classUid = url.searchParams.get('classUid');
+  const aiOperation = url.searchParams.get('aiOperation');
   const provider = url.searchParams.get('provider');
   const model = url.searchParams.get('model');
   const page = parseInt(url.searchParams.get('page') ?? '1');
@@ -30,6 +31,7 @@ export async function GET(req: NextRequest) {
   if (agent) where.agentDetected = agent;
   if (source) where.source = source;
   if (classUid) where.classUid = parseInt(classUid);
+  if (aiOperation) where.aiOperation = aiOperation;
   if (provider) where.provider = provider;
   if (model) where.model = model;
   if (startDate || endDate) {

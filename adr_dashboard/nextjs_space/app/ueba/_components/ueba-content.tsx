@@ -8,7 +8,7 @@ const METRIC_LABELS: Record<string, string> = {
   files_touched_per_hour: 'Files touched / hour',
   mcp_tool_diversity:     'MCP tool diversity',
   offhours_share:         'Off-hours share',
-  api_call_rate:          'API call rate (7001 / hr)',
+  api_call_rate:          'API call rate (inference / hr)',
 };
 
 interface Baseline {

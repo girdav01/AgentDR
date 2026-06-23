@@ -56,14 +56,14 @@ impl NetworkMonitor {
                     continue; // Only emit events for interesting traffic
                 }
 
-                let (risk, class_uid, activity_id, event_type, msg) = if let Some(ref ai) = ai_info {
-                    ("medium", CLASS_LLM_INFERENCE, ACTIVITY_EXECUTE, "network_request",
+                let (risk, op, activity_id, event_type, msg) = if let Some(ref ai) = ai_info {
+                    ("medium", AiOperation::Inference, ACTIVITY_EXECUTE, "network_request",
                      format!("AI API request to {} ({})", host, ai.provider))
                 } else if let Some(ref platform) = messaging {
-                    ("high", CLASS_PERMISSION_ESCALATION, ACTIVITY_EXECUTE, "messaging_channel_access",
+                    ("high", AiOperation::PermissionEscalation, ACTIVITY_EXECUTE, "messaging_channel_access",
                      format!("Agent accessing {} via {}", platform, host))
                 } else {
-                    ("low", CLASS_AGENT_ACTION, ACTIVITY_CREATE, "network_request",
+                    ("low", AiOperation::AgentAction, ACTIVITY_CREATE, "network_request",
                      format!("Network request to {}", host))
                 };
 
@@ -76,8 +76,7 @@ impl NetworkMonitor {
                     "ai_provider": ai_info.as_ref().map(|a| &a.provider),
                 }), risk);
                 ev.source = Some("network_monitor".into());
-                ev.class_uid = Some(class_uid);
-                ev.type_uid = Some(class_uid * 100 + activity_id);
+                ev.set_op(op, activity_id);
                 ev.activity_id = Some(activity_id);
                 ev.status_id = Some(STATUS_SUCCESS);
                 ev.message = Some(msg);

@@ -78,6 +78,7 @@ async function ingestEvents(events: any[], orgId: string | null): Promise<number
           tags: data.tags ? JSON.stringify(data.tags) : null,
           orgId,
           classUid:      data.class_uid ?? null,
+          aiOperation:   data.ai_operation ?? null,
           typeUid:       data.type_uid ?? null,
           activityId:    data.activity_id ?? null,
           severityId:    data.severity_id ?? null,

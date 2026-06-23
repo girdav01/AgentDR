@@ -11,7 +11,7 @@ cosai-community/
 │   ├── ai-endpoints.json           # AI provider API endpoint hostname patterns
 │   └── messaging-endpoints.json    # Messaging platform endpoint patterns
 ├── policies/
-│   └── detection-rules.json        # Default OCSF Category 7 detection rules
+│   └── detection-rules.json        # Default detection rules (AITF OCSF Class-Reuse)
 ├── docs/
 │   └── CONTRIBUTING.md             # How to contribute new signatures/rules
 └── README.md                       # This file
@@ -52,7 +52,10 @@ The optional `requires_also` field means **both** the main pattern AND the speci
 
 ### Detection Rules (`policies/detection-rules.json`)
 
-Pre-built threat-detection policies aligned with OCSF Category 7 event classes:
+Pre-built threat-detection policies aligned with the **AITF OCSF Class-Reuse
+Model**. Each rule emits a finding that reuses an existing OCSF class
+(`ocsf_class`: Detection Finding `2004`, Compliance Finding `2003`, or
+Vulnerability Finding `2002`) and carries an `ai_operation` profile:
 
 ```json
 {
@@ -60,7 +63,9 @@ Pre-built threat-detection policies aligned with OCSF Category 7 event classes:
   "name": "Prompt Injection Attempt",
   "category": "Inference",
   "severity": "critical",
-  "enabled": true
+  "enabled": true,
+  "ai_operation": "prompt_injection",
+  "ocsf_class": 2004
 }
 ```
 

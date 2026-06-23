@@ -43,8 +43,7 @@ impl KernelMonitor {
             "platform": std::env::consts::OS,
             "audit_group": self.audit_group,
         }), "low");
-        ev.class_uid = Some(CLASS_AGENT_ACTION);
-        ev.type_uid = Some(CLASS_AGENT_ACTION * 100 + ACTIVITY_CREATE);
+        ev.set_op(AiOperation::AgentAction, ACTIVITY_CREATE);
         ev.activity_id = Some(ACTIVITY_CREATE);
         ev.status_id = Some(STATUS_SUCCESS);
         ev.source = Some("kernel_monitor".into());
@@ -142,8 +141,7 @@ mod linux {
                     "msg_type": msg_type,
                     "record":   trimmed,
                 }), "low");
-                ev.class_uid = Some(CLASS_AGENT_ACTION);
-                ev.type_uid = Some(CLASS_AGENT_ACTION * 100 + ACTIVITY_DETECT);
+                ev.set_op(AiOperation::AgentAction, ACTIVITY_DETECT);
                 ev.activity_id = Some(ACTIVITY_DETECT);
                 ev.status_id = Some(STATUS_SUCCESS);
                 ev.source = Some("kernel_audit".into());
@@ -182,8 +180,7 @@ mod linux {
                         let mut ev = EventRecord::new("kernel_proc_scan", json!({
                             "processes": seen, "io_bytes_total": total,
                         }), "low");
-                        ev.class_uid = Some(CLASS_AGENT_ACTION);
-                        ev.type_uid = Some(CLASS_AGENT_ACTION * 100 + ACTIVITY_DETECT);
+                        ev.set_op(AiOperation::AgentAction, ACTIVITY_DETECT);
                         ev.activity_id = Some(ACTIVITY_DETECT);
                         ev.source = Some("kernel_proc_scan".into());
                         let _ = tx.send(ev);
@@ -217,8 +214,7 @@ mod windows {
 #[allow(dead_code)]
 fn emit_warning(tx: &mpsc::UnboundedSender<EventRecord>, msg: &str) {
     let mut ev = EventRecord::new("kernel_monitor_warning", json!({"message": msg}), "low");
-    ev.class_uid = Some(CLASS_AGENT_ACTION);
-    ev.type_uid = Some(CLASS_AGENT_ACTION * 100 + ACTIVITY_DETECT);
+    ev.set_op(AiOperation::AgentAction, ACTIVITY_DETECT);
     ev.activity_id = Some(ACTIVITY_DETECT);
     ev.source = Some("kernel_monitor".into());
     ev.message = Some(msg.into());

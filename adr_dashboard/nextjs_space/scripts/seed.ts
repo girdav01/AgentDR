@@ -3,32 +3,26 @@ import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
-// ── CoSAI OCSF Category 7 constants ──
+// ── AITF OCSF Class-Reuse constants ──
+// Each AI event reuses an existing OCSF class (classUid) and carries an
+// `aiOperation` profile string holding the AI-specific semantic.
 const OCSF_CLASSES = {
-  MODEL_INFERENCE: 7001,
-  AGENT_ACTIVITY: 7002,
-  TOOL_EXECUTION: 7003,
-  DATA_RETRIEVAL: 7004,
-  SECURITY_FINDING: 7005,
-  SUPPLY_CHAIN: 7006,
-  GOVERNANCE: 7007,
-  IDENTITY: 7008,
-  MODEL_OPS: 7009,
-  ASSET_INVENTORY: 7010,
+  API_ACTIVITY: 6003,         // inference, tool_execution, mcp_operation
+  DATASTORE_ACTIVITY: 6005,   // data_retrieval
+  APP_LIFECYCLE: 6002,        // model_ops
+  INVENTORY_INFO: 5001,       // asset_inventory
+  AUTHENTICATION: 3002,       // identity
+  DETECTION_FINDING: 2004,    // prompt_injection, data_exfiltration, etc.
+  COMPLIANCE_FINDING: 2003,   // compliance_violation
+  VULNERABILITY_FINDING: 2002,// supply_chain
+  AGENT_ACTIVITY: 9001,       // agent_action
+  DELEGATION_ACTIVITY: 9002,  // delegation
 };
 
-const CLASS_LABELS: Record<number, string> = {
-  7001: 'AI Model Inference',
-  7002: 'AI Agent Activity',
-  7003: 'AI Tool Execution',
-  7004: 'AI Data Retrieval',
-  7005: 'AI Security Finding',
-  7006: 'AI Supply Chain',
-  7007: 'AI Governance',
-  7008: 'AI Identity',
-  7009: 'AI Model Operations',
-  7010: 'AI Asset Inventory',
-};
+// type_uid is derived per OCSF as classUid * 100 + activity_id.
+function typeUidFor(classUid: number, activityId: number): number {
+  return classUid * 100 + activityId;
+}
 
 const MODELS = [
   { id: 'gpt-4o', provider: 'openai', type: 'llm' },
@@ -78,7 +72,7 @@ function makeActor() {
   return JSON.stringify({ user: { uid: u.uid, name: u.name, type: u.role }, session: { uid: uuid() } });
 }
 
-function makeCompliance(classUid: number) {
+function makeCompliance() {
   const c: any = {};
   if (Math.random() > 0.3) c.nist_ai_rmf = { controls: ['MAP 1.1', 'MEASURE 2.3'], function: 'Measure' };
   if (Math.random() > 0.5) c.eu_ai_act = { articles: ['Art. 9', 'Art. 13'], risk_level: pick(['high_risk', 'limited_risk', 'minimal_risk']) };
@@ -97,12 +91,14 @@ function gen7001(hoursAgo: number) {
   const inputTokens = randInt(50, 4000);
   const outputTokens = randInt(20, 2000);
   const totalMs = randInt(200, 5000);
+  const activityId = pick([1, 2, 3]);
   return {
     timestamp: makeTimestamp(hoursAgo),
     eventType: 'ai_model_inference',
-    classUid: 7001,
-    typeUid: pick([700101, 700102, 700103]),
-    activityId: pick([1, 2, 3]),
+    classUid: 6003,
+    aiOperation: 'inference',
+    typeUid: typeUidFor(6003, activityId),
+    activityId,
     severityId: pick([1, 1, 1, 2, 3]),
     statusId: pick([1, 1, 1, 2]),
     riskLevel: pick(['low', 'low', 'medium']),
@@ -116,7 +112,7 @@ function gen7001(hoursAgo: number) {
     tokenUsage: JSON.stringify({ input_tokens: inputTokens, output_tokens: outputTokens, total_tokens: inputTokens + outputTokens, estimated_cost_usd: +((inputTokens * 0.0025 + outputTokens * 0.01) / 1000).toFixed(6) }),
     costInfo: JSON.stringify({ input_cost_usd: +(inputTokens * 0.0025 / 1000).toFixed(6), output_cost_usd: +(outputTokens * 0.01 / 1000).toFixed(6), total_cost_usd: +((inputTokens * 0.0025 + outputTokens * 0.01) / 1000).toFixed(6) }),
     actor: makeActor(),
-    compliance: makeCompliance(7001),
+    compliance: makeCompliance(),
     traceId: traceId(),
     spanId: spanId(),
   };
@@ -124,13 +120,15 @@ function gen7001(hoursAgo: number) {
 
 function gen7002(hoursAgo: number) {
   const a = pick(AGENTS);
+  const agentActivityId = pick([1, 2, 3, 4, 5]);
   const stepType = pick(['planning', 'reasoning', 'tool_use', 'delegation', 'response', 'memory_access', 'reflection']);
   return {
     timestamp: makeTimestamp(hoursAgo),
     eventType: 'ai_agent_activity',
-    classUid: 7002,
-    typeUid: pick([700201, 700202, 700203, 700204, 700205]),
-    activityId: pick([1, 2, 3, 4, 5]),
+    classUid: 9001,
+    aiOperation: 'agent_action',
+    typeUid: typeUidFor(9001, agentActivityId),
+    activityId: agentActivityId,
     severityId: pick([1, 1, 2, 2, 3]),
     statusId: 1,
     riskLevel: pick(['low', 'low', 'medium', 'high']),
@@ -143,7 +141,7 @@ function gen7002(hoursAgo: number) {
     message: `Agent ${a.name} (${a.framework}) — ${stepType} step`,
     details: JSON.stringify({ agent_type: a.type, step_type: stepType, step_index: randInt(0, 10), thought: stepType === 'planning' ? 'Analyzing task requirements and planning execution strategy' : undefined, action: stepType === 'tool_use' ? pick(TOOLS) : undefined, session_id: uuid(), turn_count: randInt(1, 15) }),
     actor: makeActor(),
-    compliance: makeCompliance(7002),
+    compliance: makeCompliance(),
     traceId: traceId(),
     spanId: spanId(),
   };
@@ -153,12 +151,14 @@ function gen7003(hoursAgo: number) {
   const tool = pick(TOOLS);
   const server = pick(MCP_SERVERS);
   const isError = Math.random() > 0.9;
+  const activityId = pick([1, 2]);
   return {
     timestamp: makeTimestamp(hoursAgo),
     eventType: 'ai_tool_execution',
-    classUid: 7003,
-    typeUid: pick([700301, 700302, 700303]),
-    activityId: pick([1, 2]),
+    classUid: 6003,
+    aiOperation: 'tool_execution',
+    typeUid: typeUidFor(6003, activityId),
+    activityId,
     severityId: isError ? 4 : pick([1, 1, 2]),
     statusId: isError ? 2 : 1,
     riskLevel: isError ? 'high' : pick(['low', 'low', 'medium']),
@@ -171,7 +171,7 @@ function gen7003(hoursAgo: number) {
     message: `Tool ${tool} via MCP server ${server}${isError ? ' — FAILED' : ''}`,
     details: JSON.stringify({ tool_type: pick(['mcp_tool', 'function', 'skill']), is_error: isError, duration_ms: randInt(10, 3000), approval_required: Math.random() > 0.7, approved: true }),
     actor: makeActor(),
-    compliance: makeCompliance(7003),
+    compliance: makeCompliance(),
     traceId: traceId(),
     spanId: spanId(),
   };
@@ -183,8 +183,9 @@ function gen7004(hoursAgo: number) {
   return {
     timestamp: makeTimestamp(hoursAgo),
     eventType: 'ai_data_retrieval',
-    classUid: 7004,
-    typeUid: pick([700401, 700402]),
+    classUid: 6005,
+    aiOperation: 'data_retrieval',
+    typeUid: typeUidFor(6005, 1),
     activityId: 1,
     severityId: pick([1, 1, 2]),
     statusId: 1,
@@ -195,7 +196,7 @@ function gen7004(hoursAgo: number) {
     message: `RAG retrieval from ${db} (${dbType}) — ${randInt(3, 20)} results`,
     details: JSON.stringify({ database_name: db, database_type: dbType, top_k: randInt(5, 20), results_count: randInt(3, 20), min_score: +(Math.random() * 0.3 + 0.5).toFixed(3), max_score: +(Math.random() * 0.2 + 0.8).toFixed(3), pipeline_stage: pick(['retrieve', 'rerank', 'generate']), embedding_model: 'text-embedding-3-small' }),
     actor: makeActor(),
-    compliance: makeCompliance(7004),
+    compliance: makeCompliance(),
     traceId: traceId(),
     spanId: spanId(),
   };
@@ -216,8 +217,9 @@ function gen7005(hoursAgo: number) {
   return {
     timestamp: makeTimestamp(hoursAgo),
     eventType: 'ai_security_finding',
-    classUid: 7005,
-    typeUid: 700501,
+    classUid: 2004,
+    aiOperation: 'prompt_injection',
+    typeUid: typeUidFor(2004, 1),
     activityId: 1,
     severityId: t.risk === 'critical' ? 5 : t.risk === 'high' ? 4 : 3,
     statusId: 1,
@@ -228,7 +230,7 @@ function gen7005(hoursAgo: number) {
     securityFinding: JSON.stringify({ finding_type: t.type, owasp_category: t.owasp, risk_level: t.risk, risk_score: t.score, confidence: +(Math.random() * 0.3 + 0.7).toFixed(2), detection_method: pick(['pattern_match', 'statistical', 'ml_classifier']), blocked: Math.random() > 0.3 }),
     details: JSON.stringify({ threat_type: t.type, owasp: t.owasp }),
     actor: makeActor(),
-    compliance: makeCompliance(7005),
+    compliance: makeCompliance(),
     traceId: traceId(),
     spanId: spanId(),
   };
@@ -239,8 +241,9 @@ function gen7006(hoursAgo: number) {
   return {
     timestamp: makeTimestamp(hoursAgo),
     eventType: 'ai_supply_chain',
-    classUid: 7006,
-    typeUid: pick([700601, 700602]),
+    classUid: 2002,
+    aiOperation: 'supply_chain',
+    typeUid: typeUidFor(2002, 1),
     activityId: 1,
     severityId: pick([1, 2, 3]),
     statusId: 1,
@@ -250,7 +253,7 @@ function gen7006(hoursAgo: number) {
     source: 'aitf_supply_chain',
     message: `Model provenance check: ${m.provider}/${m.id}`,
     details: JSON.stringify({ model_source: `https://huggingface.co/${m.id}`, model_signed: Math.random() > 0.3, verification_result: pick(['pass', 'pass', 'fail']), ai_bom_id: uuid() }),
-    compliance: makeCompliance(7006),
+    compliance: makeCompliance(),
     traceId: traceId(),
     spanId: spanId(),
   };
@@ -262,8 +265,9 @@ function gen7007(hoursAgo: number) {
   return {
     timestamp: makeTimestamp(hoursAgo),
     eventType: 'ai_governance',
-    classUid: 7007,
-    typeUid: pick([700701, 700702]),
+    classUid: 2003,
+    aiOperation: 'compliance_violation',
+    typeUid: typeUidFor(2003, 1),
     activityId: 1,
     severityId: violation ? 4 : 1,
     statusId: 1,
@@ -271,7 +275,7 @@ function gen7007(hoursAgo: number) {
     source: 'aitf_compliance_mapper',
     message: violation ? `Compliance violation detected (${pick(frameworks)})` : `Compliance audit passed — ${pick(frameworks)}`,
     details: JSON.stringify({ frameworks: [pick(frameworks), pick(frameworks)], violation_detected: violation, audit_id: uuid() }),
-    compliance: makeCompliance(7007),
+    compliance: makeCompliance(),
     traceId: traceId(),
     spanId: spanId(),
   };
@@ -280,12 +284,14 @@ function gen7007(hoursAgo: number) {
 function gen7008(hoursAgo: number) {
   const a = pick(AGENTS);
   const authResult = pick(['success', 'success', 'success', 'failure', 'denied']);
+  const activityId = pick([1, 2, 3]);
   return {
     timestamp: makeTimestamp(hoursAgo),
     eventType: 'ai_identity',
-    classUid: 7008,
-    typeUid: pick([700801, 700802, 700803]),
-    activityId: pick([1, 2, 3]),
+    classUid: 3002,
+    aiOperation: 'identity',
+    typeUid: typeUidFor(3002, activityId),
+    activityId,
     severityId: authResult === 'success' ? 1 : 4,
     statusId: authResult === 'success' ? 1 : 2,
     riskLevel: authResult === 'success' ? 'low' : 'high',
@@ -295,7 +301,7 @@ function gen7008(hoursAgo: number) {
     message: `Agent ${a.name} auth ${authResult} — ${pick(['oauth2', 'api_key', 'mtls', 'spiffe_svid'])}`,
     details: JSON.stringify({ identity_type: pick(['persistent', 'ephemeral', 'delegated']), auth_method: pick(['oauth2', 'api_key', 'mtls', 'spiffe_svid']), auth_result: authResult, scope_requested: ['read', 'write', 'execute'].slice(0, randInt(1, 3)), scope_granted: authResult === 'success' ? ['read', 'write'] : [] }),
     actor: makeActor(),
-    compliance: makeCompliance(7008),
+    compliance: makeCompliance(),
     traceId: traceId(),
     spanId: spanId(),
   };
@@ -304,12 +310,14 @@ function gen7008(hoursAgo: number) {
 function gen7009(hoursAgo: number) {
   const m = pick(MODELS);
   const opType = pick(['training', 'evaluation', 'deployment', 'monitoring', 'serving']);
+  const activityId = pick([1, 2, 3]);
   return {
     timestamp: makeTimestamp(hoursAgo),
     eventType: 'ai_model_ops',
-    classUid: 7009,
-    typeUid: pick([700901, 700902, 700903]),
-    activityId: pick([1, 2, 3]),
+    classUid: 6002,
+    aiOperation: 'model_ops',
+    typeUid: typeUidFor(6002, activityId),
+    activityId,
     severityId: pick([1, 1, 2]),
     statusId: 1,
     riskLevel: pick(['low', 'low', 'medium']),
@@ -318,7 +326,7 @@ function gen7009(hoursAgo: number) {
     source: 'aitf_model_ops_instrumentor',
     message: `Model ${opType}: ${m.provider}/${m.id}`,
     details: JSON.stringify({ operation_type: opType, model_version: `v${randInt(1, 5)}.${randInt(0, 9)}`, status: pick(['completed', 'in_progress', 'completed']), environment: pick(['production', 'staging', 'development']) }),
-    compliance: makeCompliance(7009),
+    compliance: makeCompliance(),
     traceId: traceId(),
     spanId: spanId(),
   };
@@ -326,19 +334,21 @@ function gen7009(hoursAgo: number) {
 
 function gen7010(hoursAgo: number) {
   const assetType = pick(['model', 'dataset', 'prompt_template', 'vector_db', 'mcp_server', 'agent', 'pipeline']);
+  const activityId = pick([1, 2]);
   return {
     timestamp: makeTimestamp(hoursAgo),
     eventType: 'ai_asset_inventory',
-    classUid: 7010,
-    typeUid: pick([701001, 701002]),
-    activityId: pick([1, 2]),
+    classUid: 5001,
+    aiOperation: 'asset_inventory',
+    typeUid: typeUidFor(5001, activityId),
+    activityId,
     severityId: pick([1, 1, 2]),
     statusId: 1,
     riskLevel: pick(['low', 'low', 'medium']),
     source: 'aitf_asset_inventory',
     message: `Asset ${pick(['registered', 'discovered', 'audited'])}: ${assetType}`,
     details: JSON.stringify({ asset_type: assetType, asset_id: uuid(), risk_classification: pick(['high_risk', 'limited_risk', 'minimal_risk']), deployment_environment: pick(['production', 'staging', 'development']), audit_result: pick(['pass', 'pass', 'warning', 'fail']) }),
-    compliance: makeCompliance(7010),
+    compliance: makeCompliance(),
     traceId: traceId(),
     spanId: spanId(),
   };
@@ -421,22 +431,23 @@ async function main() {
       total++;
     }
   }
-  console.log(`Seeded ${total} CoSAI OCSF Category 7 events.`);
+  console.log(`Seeded ${total} AITF OCSF class-reuse events.`);
 
-  // Generate CoSAI detection rule alerts
+  // Generate CoSAI detection rule alerts. Detections are OCSF findings:
+  // Detection Finding (2004) for all, except Supply Chain Compromise (2002).
   const DETECTION_RULES = [
-    { ruleId: 'AITF-DET-001', name: 'Unusual Token Usage', owasp: 'LLM10', sev: 'medium', classUid: 7001 },
-    { ruleId: 'AITF-DET-002', name: 'Model Switching Attack', owasp: null, sev: 'high', classUid: 7001 },
-    { ruleId: 'AITF-DET-003', name: 'Prompt Injection Attempt', owasp: 'LLM01', sev: 'critical', classUid: 7005 },
-    { ruleId: 'AITF-DET-005', name: 'Agent Loop Detection', owasp: null, sev: 'medium', classUid: 7002 },
-    { ruleId: 'AITF-DET-006', name: 'Unauthorized Agent Delegation', owasp: null, sev: 'high', classUid: 7002 },
-    { ruleId: 'AITF-DET-007', name: 'Agent Session Hijack', owasp: null, sev: 'critical', classUid: 7008 },
-    { ruleId: 'AITF-DET-009', name: 'MCP Server Impersonation', owasp: null, sev: 'critical', classUid: 7003 },
-    { ruleId: 'AITF-DET-010', name: 'Tool Permission Bypass', owasp: null, sev: 'high', classUid: 7003 },
-    { ruleId: 'AITF-DET-011', name: 'Data Exfiltration via Tools', owasp: 'LLM02', sev: 'critical', classUid: 7005 },
-    { ruleId: 'AITF-DET-012', name: 'PII Exfiltration Chain', owasp: 'LLM02', sev: 'critical', classUid: 7005 },
-    { ruleId: 'AITF-DET-013', name: 'Jailbreak Escalation', owasp: 'LLM01', sev: 'high', classUid: 7005 },
-    { ruleId: 'AITF-DET-014', name: 'Supply Chain Compromise', owasp: 'LLM03', sev: 'critical', classUid: 7006 },
+    { ruleId: 'AITF-DET-001', name: 'Unusual Token Usage', owasp: 'LLM10', sev: 'medium', classUid: 2004, aiOperation: 'cost_anomaly' },
+    { ruleId: 'AITF-DET-002', name: 'Model Switching Attack', owasp: null, sev: 'high', classUid: 2004, aiOperation: 'guardrail' },
+    { ruleId: 'AITF-DET-003', name: 'Prompt Injection Attempt', owasp: 'LLM01', sev: 'critical', classUid: 2004, aiOperation: 'prompt_injection' },
+    { ruleId: 'AITF-DET-005', name: 'Agent Loop Detection', owasp: null, sev: 'medium', classUid: 2004, aiOperation: 'guardrail' },
+    { ruleId: 'AITF-DET-006', name: 'Unauthorized Agent Delegation', owasp: null, sev: 'high', classUid: 2004, aiOperation: 'permission_escalation' },
+    { ruleId: 'AITF-DET-007', name: 'Agent Session Hijack', owasp: null, sev: 'critical', classUid: 2004, aiOperation: 'permission_escalation' },
+    { ruleId: 'AITF-DET-009', name: 'MCP Server Impersonation', owasp: null, sev: 'critical', classUid: 2004, aiOperation: 'prompt_injection' },
+    { ruleId: 'AITF-DET-010', name: 'Tool Permission Bypass', owasp: null, sev: 'high', classUid: 2004, aiOperation: 'permission_escalation' },
+    { ruleId: 'AITF-DET-011', name: 'Data Exfiltration via Tools', owasp: 'LLM02', sev: 'critical', classUid: 2004, aiOperation: 'data_exfiltration' },
+    { ruleId: 'AITF-DET-012', name: 'PII Exfiltration Chain', owasp: 'LLM02', sev: 'critical', classUid: 2004, aiOperation: 'data_exfiltration' },
+    { ruleId: 'AITF-DET-013', name: 'Jailbreak Escalation', owasp: 'LLM01', sev: 'high', classUid: 2004, aiOperation: 'prompt_injection' },
+    { ruleId: 'AITF-DET-014', name: 'Supply Chain Compromise', owasp: 'LLM03', sev: 'critical', classUid: 2002, aiOperation: 'supply_chain' },
   ];
 
   for (let i = 0; i < 30; i++) {

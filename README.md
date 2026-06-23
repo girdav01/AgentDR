@@ -1,6 +1,6 @@
 # AgentDR — Agent Detection & Response Prototype
 
-> An open-source prototype for detecting, monitoring, and responding to AI agent activity on endpoints, aligned with the **CoSAI AI Telemetry Framework (AITF)** and the [`girdav01/aitf`](https://github.com/girdav01/aitf) reference spec.
+> An open-source prototype for detecting, monitoring, and responding to AI agent activity on endpoints, aligned with the **CoSAI AI Telemetry Framework (AITF)** and the [`girdav01/AITF`](https://github.com/girdav01/AITF) reference spec.
 
 AgentDR is an early-stage research prototype that demonstrates what an *Endpoint Detection & Response* product looks like when the threat model expands to include autonomous AI agents — coding assistants, browser-use agents, multi-agent orchestrators, enterprise copilots, and rogue general-purpose agents (OpenClaw, AutoGPT, etc.). It captures rich AI-aware telemetry from monitored endpoints, classifies activity against community-maintained signature rules, and surfaces alerts through a Next.js analyst dashboard.
 
@@ -34,7 +34,7 @@ AgentDR/
 ## Goals of the prototype
 
 1. **Make AI agent activity observable.** Most EDRs can detect a process and a network connection, but cannot tell you that the process *is* Claude Code, that it just called the OpenAI API 47 times in 60 seconds, or that it dropped a Python skill file into `~/.openclaw/skills/`. AgentDR fills that gap.
-2. **Demonstrate an OCSF Category 7 telemetry pipeline.** Every event the agent emits is shaped against the CoSAI/AITF schema so downstream SIEMs can consume it without a translation layer.
+2. **Demonstrate an AITF OCSF Class-Reuse telemetry pipeline.** Every event the agent emits reuses a standard OCSF class and carries an `ai_operation` profile (per the CoSAI/AITF schema) so downstream SIEMs can consume it without a translation layer.
 3. **Provide a reference rule pack.** The `cosai-community/` directory is a self-contained, JSON-driven, checksum-verified pack of agent signatures, AI endpoint patterns, messaging endpoints, and 20 detection rules — designed to be edited and extended without recompiling the agent.
 4. **Show the analyst side.** The Next.js dashboard provides activity, alerts, analytics, logs, and policy management views over the captured events.
 
@@ -91,7 +91,7 @@ A Next.js 14 (App Router) + TypeScript + Tailwind + shadcn/ui application backed
 - **Settings** — storage retention, archival, multi-tenant org configuration.
 - **Auth** — NextAuth with Prisma adapter (org/role: owner / admin / analyst / viewer).
 
-The Prisma schema (`prisma/schema.prisma`) carries the full OCSF Category 7 field set on the `Event` model (`classUid`, `typeUid`, `activityId`, `severityId`, `provider`, `model`, `agentName`, `agentFramework`, `toolName`, `mcpServer`, `actor`, `compliance`, `securityFinding`, `tokenUsage`, `costInfo`, `traceId`, `spanId`).
+The Prisma schema (`prisma/schema.prisma`) carries the full AITF OCSF Class-Reuse field set on the `Event` model (`classUid`, `aiOperation`, `typeUid`, `activityId`, `severityId`, `provider`, `model`, `agentName`, `agentFramework`, `toolName`, `mcpServer`, `actor`, `compliance`, `securityFinding`, `tokenUsage`, `costInfo`, `traceId`, `spanId`).
 
 Events are ingested by the agent's `server_push` POSTing to `/api/sync`. Alerts are exposed at `/api/alerts`, recent events at `/api/events/recent`.
 
@@ -119,7 +119,7 @@ cosai-community/
 AgentDR's job is to take *raw endpoint behavior* — a file opened, a syscall
 made, an HTTP request attempted, a JSON-RPC frame sent to an MCP server —
 and convert it into **normalized, SIEM-ready telemetry**: one `EventRecord`
-per observed behavior, shaped against OCSF Category 7. Every technique below
+per observed behavior, shaped against the AITF OCSF Class-Reuse Model. Every technique below
 feeds the **same async event bus**; the bus is what makes a credential read
 from the file monitor, an OTLP span from Claude Code, and a blocked
 connection from the inline proxy all come out the other end with the same
@@ -133,10 +133,10 @@ fields, the same `trace_id` discipline, and the same compliance mappings.
  file / process / network  ┐
  OTLP gen_ai.* ingest      │
  MCP inventory + stdio     ├──►  EventRecord  ──►  detection  ──►  JSONL store
- kernel audit              │     (OCSF Cat-7)      engine +       server push
- shell / TTY wrap          │     class_uid,        policy         10 exporters
- browser CDP               │     trace_id,         engine         inline proxy
- inline proxy              ┘     severity_id …                    decisions
+ kernel audit              │     (OCSF reuse)      engine +       server push
+ shell / TTY wrap          │     ai_operation,     policy         10 exporters
+ browser CDP               │     class_uid,        engine         inline proxy
+ inline proxy              ┘     trace_id …                        decisions
 ```
 
 Nothing downstream needs to know *which* technique produced an event — the
@@ -147,24 +147,24 @@ normalized `EventRecord`.
 
 | # | Technique | What it observes | OS mechanism | Becomes |
 |---|-----------|------------------|--------------|---------|
-| 1 | **File-system watch** | create / modify / delete / move under watched dirs; writes to agent-skill paths and credential files | `inotify` (Linux), `FSEvents` (macOS), `ReadDirectoryChangesW` (Windows) via the `notify` crate | `class_uid 7002` agent action; `7006` on credential paths |
-| 2 | **Process-table polling** | process start / stop; names, exe paths and command lines matched to AI-agent signatures | `/proc` (Linux), `libproc` (macOS), `ToolHelp` (Windows) via `sysinfo` | `class_uid 7002`; `agent_name` / `agent_framework` populated from `agent-signatures.json` |
-| 3 | **Network observation** | outbound connections to AI provider & messaging hosts | mitm-style HTTP proxy *or* socket sampling + DNS | `class_uid 7001` (AI API) / `7007` (messaging) |
-| 4 | **OTLP `gen_ai.*` ingest** | prompts, tool calls, token usage, approvals — emitted by the agents themselves | loopback OTLP/HTTP server; OpenTelemetry GenAI semantic conventions | `7001` inference, `7003` tool, `7004` MCP, `7007` approval |
+| 1 | **File-system watch** | create / modify / delete / move under watched dirs; writes to agent-skill paths and credential files | `inotify` (Linux), `FSEvents` (macOS), `ReadDirectoryChangesW` (Windows) via the `notify` crate | `ai_operation tool_execution` (API Activity `6003`); credential paths raise a `data_exfiltration` Detection Finding (`2004`) |
+| 2 | **Process-table polling** | process start / stop; names, exe paths and command lines matched to AI-agent signatures | `/proc` (Linux), `libproc` (macOS), `ToolHelp` (Windows) via `sysinfo` | `ai_operation agent_action` (`agent_activity 9001`); `agent_name` / `agent_framework` populated from `agent-signatures.json` |
+| 3 | **Network observation** | outbound connections to AI provider & messaging hosts | mitm-style HTTP proxy *or* socket sampling + DNS | `inference` (API Activity `6003`, AI API) / `permission_escalation` (Detection Finding `2004`, messaging) |
+| 4 | **OTLP `gen_ai.*` ingest** | prompts, tool calls, token usage, approvals — emitted by the agents themselves | loopback OTLP/HTTP server; OpenTelemetry GenAI semantic conventions | `inference` / `tool_execution` / `mcp_operation` (API Activity `6003`), `permission_escalation` (`2004`) approval |
 | 5 | **Runtime hooks** | wires Claude Code / Cursor / Codex / Aider / OpenCode to emit (4) in the first place | edits each agent's own config (`settings.json`, `mcp.json`, `config.toml`, `opencode.json`) | enables technique 4 with semantic certainty (no guessing) |
-| 6 | **MCP inventory** | which MCP servers are declared, where, with which transport and which secret env keys | scans 8 known config locations across every runtime | `class_uid 7004`, `activity_id 2 (Read)` |
-| 7 | **MCP stdio interception** | every JSON-RPC request/response to a wrapped MCP server | `adr-agent mcp wrap` re-execs the server and proxies stdin/stdout | `class_uid 7004`; `tool_name` = JSON-RPC method |
-| 8 | **Kernel audit** | syscall / path records from the OS audit subsystem | `NETLINK_AUDIT` multicast (Linux); EndpointSecurity / ETW posture on macOS / Windows | `class_uid 7002`, `activity_id 6 (Detect)` |
-| 9 | **Shell / TTY wrap** | every command an agent shell-execs, plus its stdout / stderr | `adr-agent shell wrap` pipes stdin/stdout/stderr | `class_uid 7003`; input = medium risk, output = low |
-| 10 | **Browser CDP attach** | page open / navigate / close by browser-use agents | polls the Chrome DevTools `/json` endpoint | `class_uid 7002` with destination URL |
-| 11 | **Inline proxy decisions** | every CONNECT an agent attempts, allowed or denied | loopback HTTP CONNECT proxy consulted by `HTTPS_PROXY` | `7001/7002` on allow, `7008` BLOCKED on deny |
+| 6 | **MCP inventory** | which MCP servers are declared, where, with which transport and which secret env keys | scans 8 known config locations across every runtime | `ai_operation mcp_operation` (API Activity `6003`), `activity_id 2 (Read)` |
+| 7 | **MCP stdio interception** | every JSON-RPC request/response to a wrapped MCP server | `adr-agent mcp wrap` re-execs the server and proxies stdin/stdout | `ai_operation mcp_operation` (`6003`); `tool_name` = JSON-RPC method |
+| 8 | **Kernel audit** | syscall / path records from the OS audit subsystem | `NETLINK_AUDIT` multicast (Linux); EndpointSecurity / ETW posture on macOS / Windows | `ai_operation agent_action` (`9001`), `activity_id 6 (Detect)` |
+| 9 | **Shell / TTY wrap** | every command an agent shell-execs, plus its stdout / stderr | `adr-agent shell wrap` pipes stdin/stdout/stderr | `ai_operation tool_execution` (`6003`); input = medium risk, output = low |
+| 10 | **Browser CDP attach** | page open / navigate / close by browser-use agents | polls the Chrome DevTools `/json` endpoint | `ai_operation agent_action` (`9001`) with destination URL |
+| 11 | **Inline proxy decisions** | every CONNECT an agent attempts, allowed or denied | loopback HTTP CONNECT proxy consulted by `HTTPS_PROXY` | `inference`/`agent_action` (`6003`/`9001`) on allow, `compliance_violation` (`2003`) BLOCKED on deny |
 | 12 | **Credential attribution** | joins a credential-file read to the agent process responsible | 10-minute rolling window of agent `process_started` events | enriches the `AITF-DET-018` alert with a `candidate_agents` list |
-| 13 | **Self-protection / watchdog** | hashes AgentDR's own config, the rule pack, the binary, and every installed runtime-hook config; fires when an AgentDR marker is removed or a tracked file disappears | periodic SHA-256 + marker presence check | `class_uid 7008` (critical) on evasion, optional self-heal that re-installs the hook |
-| 14 | **Auto-discovery** | finds every AI agent on the host (PATH, install locations, hook configs, MCP entries, running PIDs) and decides what to monitor per `[discovery].mode` (interactive / policy / automatic / off) | runs on install, on startup, on schedule, on demand | hook installs + class_uid 7002 `discovery_scan_completed` events |
+| 13 | **Self-protection / watchdog** | hashes AgentDR's own config, the rule pack, the binary, and every installed runtime-hook config; fires when an AgentDR marker is removed or a tracked file disappears | periodic SHA-256 + marker presence check | `ai_operation compliance_violation` (Compliance Finding `2003`, critical) on evasion, optional self-heal that re-installs the hook |
+| 14 | **Auto-discovery** | finds every AI agent on the host (PATH, install locations, hook configs, MCP entries, running PIDs) and decides what to monitor per `[discovery].mode` (interactive / policy / automatic / off) | runs on install, on startup, on schedule, on demand | hook installs + `ai_operation agent_action` (`9001`) `discovery_scan_completed` events |
 
 ### From observation to a normalized event
 
-Each technique constructs an `EventRecord` and fills the OCSF Category 7
+Each technique constructs an `EventRecord` and fills the AITF OCSF Class-Reuse
 fields it can attest to:
 
 * **`class_uid` / `type_uid` / `activity_id`** — *what kind of behavior*
@@ -192,14 +192,14 @@ Once an event is on the bus it is, in order:
    time windows (e.g. *rapid file modification*, *unusual API volume*,
    *credential access*) — each match emitting its own alert event;
 3. run through the **policy engine** — YAML policy-as-code; each match
-   emits a `class_uid 7008` Compliance Violation and can escalate to a
+   emits a Compliance Finding (`class_uid 2003`, `ai_operation compliance_violation`) and can escalate to a
    **block**;
 4. **fanned out** to the legacy server-push and to every enabled vendor
    exporter (Splunk, Datadog, Elastic, Chronicle, XSIAM, Snowflake,
    Sentinel, Wazuh, syslog, OCSF).
 
 The result: behavior observed by *any* technique becomes a standardized
-OCSF Category 7 record that lands in the analyst's SIEM — and, when a
+AITF OCSF Class-Reuse record that lands in the analyst's SIEM — and, when a
 policy says so, gets blocked at the proxy in the same pass.
 
 ---
@@ -226,7 +226,7 @@ What it detects (per tick, default 30 s):
 | Observation | Severity | Event |
 |---|---|---|
 | Hook config hash changed, AgentDR marker still present | `low` | `watchdog_config_changed` — likely operator edit |
-| Hook config hash changed, marker MISSING (was present) | `critical` | **`watchdog_evasion_detected`** — class_uid 7008, status=BLOCKED |
+| Hook config hash changed, marker MISSING (was present) | `critical` | **`watchdog_evasion_detected`** — class_uid 2003 (Compliance Finding), status=BLOCKED |
 | Tracked file deleted | `critical` | `watchdog_file_missing` |
 | Agent config edited | `medium` | `watchdog_config_changed` |
 | Rule / policy pack edited | `high` | `watchdog_rule_pack_changed` |
@@ -369,26 +369,34 @@ To extend coverage, edit `adr_system/cosai-community/rules/agent-signatures.json
 
 ## AI Telemetry: CoSAI / AITF schema
 
-AgentDR's telemetry follows the **CoSAI AI Telemetry Framework (AITF)** as described in [`girdav01/aitf`](https://github.com/girdav01/aitf), which defines an OCSF-style **Category 7** for AI-specific events. Every `EventRecord` (see `adr_system/rust_agent/src/models.rs`) is shaped against this schema so that events are SIEM-ready without a translation layer.
+AgentDR's telemetry follows the **CoSAI AI Telemetry Framework (AITF)** as described in [`girdav01/AITF`](https://github.com/girdav01/AITF). Following AITF's latest spec, AgentDR has **dropped the bespoke "Category 7"** in favour of AITF's **OCSF Class-Reuse Model**: every AI event reuses an *existing* OCSF class and carries an **`ai_operation` profile** that holds the AI-specific semantic. (This mirrors the OCSF principle of reusing classes rather than minting bespoke AI event classes — see OCSF issue [#1640](https://github.com/ocsf/ocsf-schema/issues/1640) for the proposed control-plane classes.) Every `EventRecord` (see `adr_system/rust_agent/src/models.rs`) is shaped against this schema so that events are SIEM-ready without a translation layer.
 
-### Event classes (`class_uid`)
+### OCSF Class-Reuse Model (`ai_operation` → reused `class_uid`)
 
-| `class_uid` | Class name | What AgentDR emits here |
-|---:|---|---|
-| 7001 | LLM Inference | Decoded LLM request/response metadata (provider, model, token counts, cost) |
-| 7002 | Agent Action | Process start/stop, file activity attributed to a known agent |
-| 7003 | Tool Execution | Shell commands and tool calls invoked by an agent |
-| 7004 | MCP Operation | MCP server interactions, plugin/skill loads |
-| 7005 | Prompt Injection | Suspicious prompt content patterns |
-| 7006 | Data Exfiltration | Bulk deletions, credential file access, sensitive data egress |
-| 7007 | Permission Escalation | Boundary violations, privileged messaging access |
-| 7008 | Compliance Violation | Drift from configured policy / framework requirements |
-| 7009 | Guardrail Event | Guardrail triggers and insecure-output handling |
-| 7010 | Cost Anomaly | Unusual API volume, token-spend spikes |
+Data-plane events flow through the standard OCSF categories (2–6); only the control-plane agent/delegation lifecycle uses the proposed Category 9 (provisional, pending OCSF ratification).
+
+| `ai_operation` | Reused OCSF class (`class_uid`) | What AgentDR emits here |
+|---|---|---|
+| `inference` | API Activity (`6003`) | Decoded LLM request/response metadata (provider, model, token counts, cost) |
+| `tool_execution` | API Activity (`6003`) | Shell commands and tool calls invoked by an agent |
+| `mcp_operation` | API Activity (`6003`) | MCP server interactions, plugin/skill loads |
+| `data_retrieval` | Datastore Activity (`6005`) | RAG / vector-store retrieval |
+| `model_ops` | Application Lifecycle (`6002`) | Model lifecycle / LLMOps operations |
+| `agent_action` | `agent_activity` (`9001`, proposed) | Process start/stop, file & browser activity, agent lifecycle |
+| `delegation` | `delegation_activity` (`9002`, proposed) | Agent-to-agent authorization grants/revocations |
+| `prompt_injection`, `data_exfiltration`, `permission_escalation`, `guardrail`, `cost_anomaly` | Detection Finding (`2004`) | Security findings raised by the detection engine |
+| `compliance_violation` | Compliance Finding (`2003`) | Drift from configured policy / framework requirements |
+| `supply_chain` | Vulnerability Finding (`2002`) | Malicious/unvetted skills & plugins, supply-chain compromise |
+| `identity` | Authentication (`3002`) | Agent authentication / delegation auth |
+| `asset_inventory` | Inventory Info (`5001`) | Discovered agents and MCP-server inventory |
+
+### Semantic-convention namespaces
+
+AITF extends the OpenTelemetry GenAI conventions with dedicated namespaces; AgentDR emits attributes under: `gen_ai.*`, `mcp.*`, `skill.*`, `rag.*`, `security.*`, `compliance.*`, `cost.*`, `quality.*`, `supply_chain.*`, `identity.*`, `model_ops.*`, and `memory.security.*` (memory poisoning / integrity).
 
 ### Common OCSF fields on every event
 
-`timestamp`, `class_uid`, `type_uid` (= `class_uid * 100 + activity_id`), `activity_id` (Create=1, Read=2, Update=3, Delete=4, Execute=5, Detect=6, Block=7), `severity_id` (Informational=1 → Critical=5, mapped from `risk_level`), `status_id` (Success/Failure/Blocked/Unknown), `message`.
+`timestamp`, `class_uid` (reused OCSF class), `ai_operation` (AITF profile string), `type_uid` (= `class_uid * 100 + activity_id`), `activity_id` (Create=1, Read=2, Update=3, Delete=4, Execute=5, Detect=6, Block=7), `severity_id` (Informational=1 → Critical=5, mapped from `risk_level`), `status_id` (Success/Failure/Blocked/Unknown), `message`.
 
 ### AI-specific fields
 
@@ -406,28 +414,30 @@ Every event carries an OpenTelemetry-style `trace_id` (32 hex) and `span_id` (16
 
 Defined in `adr_system/cosai-community/policies/detection-rules.json` and wired into the engine via `adr_system/rust_agent/src/models.rs::detection_rules()`:
 
-| ID | Rule | Category | OWASP | OCSF Class |
-|---|---|---|---|---:|
-| AITF-DET-001 | Unusual Token Usage / Prompt Injection Detected | Inference | LLM01 | 7005 |
-| AITF-DET-002 | Model Switching Attack / Sensitive Data in Output | Inference | LLM02 | 7006 |
-| AITF-DET-003 | Prompt Injection Attempt / Excessive Token Usage | Inference | LLM04 | 7010 |
-| AITF-DET-004 | Excessive Cost Spike / Unauthorized Tool Execution | Inference | LLM05 | 7003 |
-| AITF-DET-005 | Agent Loop Detection / Excessive Agency | Agent | LLM08 | 7002 |
-| AITF-DET-006 | Unauthorized Agent Delegation / Supply Chain Anomaly | Agent | LLM03 | 7004 |
-| AITF-DET-007 | Agent Session Hijack / Insecure Output Handling | Agent | LLM02 | 7009 |
-| AITF-DET-008 | Excessive Tool Calls / Model DoS | Agent | LLM04 | 7010 |
-| AITF-DET-009 | Rapid File Modifications | MCP/Tool / Agent | LLM08 | 7002 |
-| AITF-DET-010 | Bulk Data Deletion | MCP/Tool | LLM06 | 7006 |
-| AITF-DET-011 | Permission Boundary Violation | MCP/Tool | LLM05 | 7007 |
-| AITF-DET-012 | Unusual API Volume | Security | LLM04 | 7010 |
-| AITF-DET-013 | MCP Server Abuse / Jailbreak Escalation | Security | LLM05 | 7004 |
-| AITF-DET-014 | Compliance Drift / Supply Chain Compromise | Security | LLM09 | 7008 |
-| AITF-DET-015 | Malicious Skill / Plugin Loaded | Agent/Plugin | LLM03 | 7004 |
-| AITF-DET-016 | Unauthorized Messaging Channel Access | Agent/Comms | LLM05 | 7007 |
-| AITF-DET-017 | Shell Command Execution by Agent | Agent/System | LLM08 | 7003 |
-| AITF-DET-018 | Agent Credential / Secret Access | Security | LLM06 | 7006 |
-| AITF-DET-019 | Cross-Platform Data Relay | Security | LLM02 | 7006 |
-| AITF-DET-020 | Unvetted Skill Installation | Agent/Plugin | LLM03 | 7004 |
+Rules 001–014 are the canonical AITF built-ins; 015–020 are AgentDR endpoint-specific extensions.
+
+| ID | Rule | Category | OWASP | `ai_operation` | OCSF Class |
+|---|---|---|---|---|---:|
+| AITF-DET-001 | Unusual Token Usage | Inference | LLM01 | `cost_anomaly` | 2004 |
+| AITF-DET-002 | Model Switching Attack | Inference | LLM02 | `prompt_injection` | 2004 |
+| AITF-DET-003 | Prompt Injection Attempt | Inference | LLM04 | `prompt_injection` | 2004 |
+| AITF-DET-004 | Excessive Cost Spike | Inference | LLM05 | `cost_anomaly` | 2004 |
+| AITF-DET-005 | Agent Loop Detection | Agent | LLM08 | `guardrail` | 2004 |
+| AITF-DET-006 | Unauthorized Agent Delegation | Agent | LLM03 | `permission_escalation` | 2004 |
+| AITF-DET-007 | Agent Session Hijack | Agent | LLM02 | `permission_escalation` | 2004 |
+| AITF-DET-008 | Excessive Tool Calls | Agent | LLM04 | `guardrail` | 2004 |
+| AITF-DET-009 | MCP Server Impersonation | MCP/Tool | LLM08 | `permission_escalation` | 2004 |
+| AITF-DET-010 | Tool Permission Bypass | MCP/Tool | LLM06 | `permission_escalation` | 2004 |
+| AITF-DET-011 | Data Exfiltration via Tools | MCP/Tool | LLM05 | `data_exfiltration` | 2004 |
+| AITF-DET-012 | PII Exfiltration Chain | Security | LLM04 | `data_exfiltration` | 2004 |
+| AITF-DET-013 | Jailbreak Escalation | Security | LLM05 | `guardrail` | 2004 |
+| AITF-DET-014 | Supply Chain Compromise | Security | LLM09 | `supply_chain` | 2002 |
+| AITF-DET-015 | Malicious Skill / Plugin Loaded | Agent/Plugin | LLM03 | `supply_chain` | 2002 |
+| AITF-DET-016 | Unauthorized Messaging Channel | Agent/Comms | LLM05 | `data_exfiltration` | 2004 |
+| AITF-DET-017 | Shell Command Execution | Agent/System | LLM08 | `permission_escalation` | 2004 |
+| AITF-DET-018 | Credential / Secret Access | Security | LLM06 | `data_exfiltration` | 2004 |
+| AITF-DET-019 | Cross-Platform Data Relay | Security | LLM02 | `data_exfiltration` | 2004 |
+| AITF-DET-020 | Unvetted Skill Installation | Agent/Plugin | LLM03 | `supply_chain` | 2002 |
 
 ### Sample event (JSONL)
 
@@ -435,8 +445,9 @@ Defined in `adr_system/cosai-community/policies/detection-rules.json` and wired 
 {
   "timestamp": "2026-05-01T14:22:08.421+00:00",
   "event_type": "process_started",
-  "class_uid": 7002,
-  "type_uid": 700201,
+  "class_uid": 9001,
+  "ai_operation": "agent_action",
+  "type_uid": 900101,
   "activity_id": 1,
   "severity_id": 3,
   "status_id": 1,
@@ -459,23 +470,24 @@ Defined in `adr_system/cosai-community/policies/detection-rules.json` and wired 
 {
   "timestamp": "2026-05-01T14:22:14.902+00:00",
   "event_type": "alert_credential_access",
-  "class_uid": 7006,
-  "type_uid": 700606,
+  "class_uid": 2004,
+  "ai_operation": "data_exfiltration",
+  "type_uid": 200406,
   "activity_id": 6,
   "severity_id": 5,
   "risk_level": "critical",
-  "message": "[AITF-DET-018] Agent Credential / Secret Access",
+  "message": "[AITF-DET-018] Credential / Secret Access",
   "agent_detected": "credential_harvesting",
   "details": {
     "path": "/Users/david/.aws/credentials",
     "event_type": "file_read",
     "rule_id": "AITF-DET-018",
-    "rule_name": "Agent Credential / Secret Access",
+    "rule_name": "Credential / Secret Access",
     "owasp_category": "LLM06"
   },
   "security_finding": {
     "rule_id": "AITF-DET-018",
-    "title": "Agent Credential / Secret Access",
+    "title": "Credential / Secret Access",
     "severity": "critical",
     "owasp_llm": "LLM06"
   },
@@ -559,7 +571,7 @@ Current state and known caveats:
 - **macOS / Windows kernel telemetry** ships as a documented posture
   (EndpointSecurity sidecar / ETW providers) rather than a built-in
   collector — only Linux `NETLINK_AUDIT` runs in-process today.
-- **Prompt-injection scoring (7005)** emits events but does not yet
+- **Prompt-injection scoring (`ai_operation prompt_injection`, Detection Finding 2004)** emits events but does not yet
   classify prompt content — AgentDR observes and forwards; correlation
   is left to the SIEM.
 - **Inline TLS** is hostname-level (CONNECT SNI) only; AgentDR does not

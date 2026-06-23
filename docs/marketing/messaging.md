@@ -12,8 +12,9 @@
   gap. It installs alongside CrowdStrike or SentinelOne, captures
   OpenTelemetry signals straight from the coding agents, inventories
   and intercepts MCP traffic, applies YAML policy-as-code, and ships
-  CoSAI / OCSF Category 7 events to whatever SIEM you already pay for.
-  Apache 2.0, three OSes, ten exporters, no SaaS dependency."
+  CoSAI AITF events (standard OCSF classes + an `ai_operation` profile)
+  to whatever SIEM you already pay for. Apache 2.0, three OSes, ten
+  exporters, no SaaS dependency."
 
 ## One-pager — CISO
 
@@ -28,7 +29,8 @@
 │ ran. Boards and regulators are starting to ask.                     │
 │                                                                     │
 │ WHAT AGENTDR PROVIDES                                               │
-│ • Per-agent visibility (30+ signatures, 10 OCSF Cat-7 classes)      │
+│ • Per-agent visibility (30+ signatures; standard OCSF classes +     │
+│   AITF ai_operation profile)                                        │
 │ • Inline blocking proxy with YAML policy-as-code                    │
 │ • UEBA baselines per-(host, user, agent) and per-metric             │
 │ • Auditable approval-flow capture (user approve/deny inside agents) │
@@ -42,7 +44,8 @@
 │                                                                     │
 │ STANDARDS                                                           │
 │ • CoSAI AI Telemetry Framework (Cisco/Google/IBM/NVIDIA backed)     │
-│ • OCSF Category 7 (the SIEM-portable AI event schema)               │
+│ • AITF OCSF Class-Reuse — standard OCSF classes + ai_operation      │
+│   profile (the SIEM-portable AI event schema)                       │
 │ • OpenTelemetry gen_ai semantic conventions                         │
 │                                                                     │
 │ CTA: pilot in 30 days. agentdr.dev/pilot                            │
@@ -57,7 +60,7 @@
 │                                                                     │
 │ WHAT YOU GET IN YOUR SIEM, DAY ONE                                  │
 │ • 20 detection rules (AITF-DET-001..020) mapped to OWASP LLM Top-10 │
-│ • OCSF Category 7 normalised events — no parsing required           │
+│ • Standard OCSF classes + ai_operation profile — no parsing required│
 │ • Per-event trace_id + span_id so you can reconstruct sessions      │
 │ • OpenTelemetry-native — events arrive < 1 s from the endpoint      │
 │                                                                     │
@@ -73,7 +76,8 @@
 │ • "Inline block" — declarative YAML policy → 403 at the proxy       │
 │                                                                     │
 │ NO LOCK-IN                                                          │
-│ Every event is OCSF Category 7. Switch SIEMs without re-parsing.    │
+│ Every event reuses a standard OCSF class + ai_operation profile.    │
+│ Switch SIEMs without re-parsing.                                    │
 │                                                                     │
 │ CTA: install the .deb / Homebrew today; first events in 5 minutes.  │
 └─────────────────────────────────────────────────────────────────────┘
@@ -116,7 +120,8 @@
 
 > AgentDR is the open-source endpoint detection and response platform
 > for the era of local AI agents. Built on the CoSAI AI Telemetry
-> Framework and OCSF Category 7, AgentDR captures every prompt, tool
+> Framework (standard OCSF classes enriched with an `ai_operation`
+> profile), AgentDR captures every prompt, tool
 > call, MCP message and approval decision from coding agents on macOS,
 > Linux and Windows endpoints — and ships the normalised events to ten
 > SIEM and observability backends. Inline policy-as-code and an
@@ -134,10 +139,12 @@ Windows), cross-SIEM (ten exporters), and from visibility into
 governance (inline blocking proxy + policy-as-code). The broader OSS
 movement validated the category; AgentDR is the next step.
 
-**Q: Why CoSAI / OCSF Category 7 and not your own schema?**
-Because in 2027 every AI-aware SIEM will speak OCSF Cat-7. AgentDR is
-the reference implementation. Operators who deploy us today won't have
-to re-parse their telemetry tomorrow.
+**Q: Why CoSAI AITF / OCSF and not your own schema?**
+Because in 2027 every AI-aware SIEM will speak standard OCSF classes
+enriched with an `ai_operation` profile — AITF dropped its bespoke
+Category 7 and now reuses existing OCSF classes rather than minting new
+ones. AgentDR is the reference implementation. Operators who deploy us
+today won't have to re-parse their telemetry tomorrow.
 
 **Q: Does AgentDR replace my EDR?**
 No. AgentDR runs alongside CrowdStrike / SentinelOne / Defender. We see

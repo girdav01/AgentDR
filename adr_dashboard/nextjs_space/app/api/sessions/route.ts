@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
     take: 50_000,
     select: {
       id: true, traceId: true, timestamp: true, eventType: true,
-      classUid: true, riskLevel: true, severityId: true,
+      classUid: true, aiOperation: true, riskLevel: true, severityId: true,
       hostName: true, userName: true, agentName: true, provider: true, model: true,
       message: true,
     },
@@ -53,6 +53,7 @@ export async function GET(req: NextRequest) {
         hosts: new Set<string>(), users: new Set<string>(),
         agents: new Set<string>(), providers: new Set<string>(),
         classes: new Set<number>(),
+        operations: new Set<string>(),
         sampleMessage: ev.message,
       };
       map.set(ev.traceId, s);
@@ -66,6 +67,7 @@ export async function GET(req: NextRequest) {
     if (ev.agentName) s.agents.add(ev.agentName);
     if (ev.provider)  s.providers.add(ev.provider);
     if (ev.classUid)  s.classes.add(ev.classUid);
+    if (ev.aiOperation) s.operations.add(ev.aiOperation);
   }
 
   const sessions = [...map.values()].map(s => ({
@@ -76,6 +78,7 @@ export async function GET(req: NextRequest) {
     hosts: [...s.hosts], users: [...s.users],
     agents: [...s.agents], providers: [...s.providers],
     classes: [...s.classes],
+    operations: [...s.operations],
     multiHost: s.hosts.size > 1,
     sampleMessage: s.sampleMessage,
   })).sort((a, b) => (b.last as any) - (a.last as any)).slice(0, limit);

@@ -1,8 +1,9 @@
-//! Generic OCSF Category 7 webhook exporter.
+//! Generic OCSF webhook exporter (AITF Class-Reuse Model).
 //!
 //! POSTs `{"events": [...]}` to a configured HTTP endpoint with optional
 //! `Authorization: Bearer <token>`. Each AgentDR event is already shaped
-//! against OCSF Category 7 — class_uid, type_uid, activity_id, severity_id,
+//! against the AITF `ai_operation` profile over reused OCSF classes —
+//! class_uid, type_uid, activity_id, severity_id, ai_operation,
 //! provider/model/agent fields — so this is the "canonical" exporter for
 //! downstream pipelines that want raw OCSF AI events.
 
@@ -38,8 +39,7 @@ impl Exporter for Ocsf {
     async fn send(&self, events: &[EventRecord]) -> Result<(), String> {
         let body = json!({
             "spec": "ocsf",
-            "category_uid": 7,
-            "category_name": "AI Activity",
+            "profile": "ai_operation",
             "events": events,
         });
         let mut req = self.client

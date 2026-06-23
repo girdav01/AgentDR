@@ -55,13 +55,12 @@ impl Exporter for Chronicle {
             let event_micros = DateTime::parse_from_rfc3339(&ev.timestamp)
                 .map(|d| d.timestamp_micros())
                 .unwrap_or(0);
-            let event_type = match ev.class_uid {
-                Some(7001) | Some(7005) => "USER_RESOURCE_ACCESS",
-                Some(7002) => "PROCESS_LAUNCH",
-                Some(7003) => "PROCESS_LAUNCH",
-                Some(7004) => "USER_COMMUNICATION",
-                Some(7006) => "USER_RESOURCE_ACCESS",
-                Some(7007) => "USER_RESOURCE_PERMISSIONS_CHANGE",
+            // Map the AITF ai_operation profile onto Chronicle UDM event types.
+            let event_type = match ev.ai_operation.as_deref() {
+                Some("inference") | Some("prompt_injection") | Some("data_exfiltration") => "USER_RESOURCE_ACCESS",
+                Some("agent_action") | Some("tool_execution") => "PROCESS_LAUNCH",
+                Some("mcp_operation") => "USER_COMMUNICATION",
+                Some("permission_escalation") => "USER_RESOURCE_PERMISSIONS_CHANGE",
                 _ => "GENERIC_EVENT",
             };
             // Pull user / pid out of the actor blob, if present.

@@ -7,29 +7,29 @@
 //! (<https://opentelemetry.io/docs/specs/semconv/gen-ai/>) and emits an
 //! `EventRecord` per log record / span into the agent's event bus.
 //!
-//! Mapping (current OTel gen_ai semconv → AITF Category 7):
+//! Mapping (current OTel gen_ai semconv → AITF Class-Reuse / ai_operation):
 //!
-//! | OTel attribute / signal                | AITF / OCSF field        |
-//! |----------------------------------------|--------------------------|
-//! | `gen_ai.system`                        | `provider`               |
-//! | `gen_ai.request.model`                 | `model` (preferred)      |
-//! | `gen_ai.response.model`                | `model` (fallback)       |
-//! | `gen_ai.operation.name`                | event_type qualifier     |
-//! | `gen_ai.agent.name`                    | `agent_name`             |
-//! | `gen_ai.agent.id` / `gen_ai.client.id` | `actor.user`             |
-//! | `gen_ai.tool.name`                     | `tool_name` → 7003       |
-//! | `gen_ai.usage.input_tokens`            | `token_usage.input`      |
-//! | `gen_ai.usage.output_tokens`           | `token_usage.output`     |
-//! | `gen_ai.usage.total_tokens`            | `token_usage.total`      |
-//! | `gen_ai.response.finish_reasons[]`     | `details.finish_reasons` |
-//! | `gen_ai.prompt` / `gen_ai.completion`  | redacted unless config   |
-//! | resource `service.name`                | `agent_framework`        |
-//! | resource `host.name` / `user.name`     | `actor.user`             |
+//! | OTel attribute / signal                | AITF / OCSF field           |
+//! |----------------------------------------|-----------------------------|
+//! | `gen_ai.system`                        | `provider`                  |
+//! | `gen_ai.request.model`                 | `model` (preferred)         |
+//! | `gen_ai.response.model`                | `model` (fallback)          |
+//! | `gen_ai.operation.name`                | event_type qualifier        |
+//! | `gen_ai.agent.name`                    | `agent_name`                |
+//! | `gen_ai.agent.id` / `gen_ai.client.id` | `actor.user`                |
+//! | `gen_ai.tool.name`                     | `tool_name`, ai_op=tool_execution → 6003 |
+//! | `gen_ai.usage.input_tokens`            | `token_usage.input`         |
+//! | `gen_ai.usage.output_tokens`           | `token_usage.output`        |
+//! | `gen_ai.usage.total_tokens`            | `token_usage.total`         |
+//! | `gen_ai.response.finish_reasons[]`     | `details.finish_reasons`    |
+//! | `gen_ai.prompt` / `gen_ai.completion`  | redacted unless config      |
+//! | resource `service.name`                | `agent_framework`           |
+//! | resource `host.name` / `user.name`     | `actor.user`                |
 //!
-//! Inference signals (`gen_ai.system` present) → class_uid 7001
-//! Tool spans (`gen_ai.tool.name` present)    → class_uid 7003
-//! MCP spans (name contains "mcp")            → class_uid 7004
-//! Anything else from a known gen_ai resource → class_uid 7002
+//! Inference (`gen_ai.system` present) → ai_operation=inference → API Activity 6003
+//! Tool spans (`gen_ai.tool.name`)     → ai_operation=tool_execution → API Activity 6003
+//! MCP spans (name contains "mcp")     → ai_operation=mcp_operation → API Activity 6003
+//! Approval/policy spans               → ai_operation=permission_escalation → Detection Finding 2004
 
 use crate::models::*;
 use axum::{
@@ -277,33 +277,32 @@ fn span_to_event(span: &Value, resource: &Attrs, redact: bool) -> Option<EventRe
     let is_mcp = span_name.to_lowercase().contains("mcp")
         || combined.keys().any(|k| k.starts_with("mcp."));
     // Tier 5 — approval flow: any span with gen_ai.approval.* or
-    // gen_ai.policy.* attributes is treated as a Permission Escalation
-    // (class_uid 7007) event so analysts can review approve/deny actions
-    // a user took inside a coding agent.
+    // gen_ai.policy.* attributes is treated as a permission-escalation
+    // Detection Finding (OCSF 2004) so analysts can review approve/deny
+    // actions a user took inside a coding agent.
     let is_approval = combined.keys().any(|k| k.starts_with("gen_ai.approval.") || k.starts_with("gen_ai.policy."));
 
     if gen_ai_system.is_none() && tool_name.is_none() && !is_mcp && !is_approval {
         return None;
     }
 
-    let (class_uid, activity_id, event_type) = if is_approval {
-        (CLASS_PERMISSION_ESCALATION, ACTIVITY_DETECT, "gen_ai.approval")
+    let (op, activity_id, event_type) = if is_approval {
+        (AiOperation::PermissionEscalation, ACTIVITY_DETECT, "gen_ai.approval")
     } else if tool_name.is_some() {
-        (CLASS_TOOL_EXECUTION, ACTIVITY_EXECUTE, "gen_ai.tool")
+        (AiOperation::ToolExecution, ACTIVITY_EXECUTE, "gen_ai.tool")
     } else if is_mcp {
-        (CLASS_MCP_OPERATION, ACTIVITY_EXECUTE, "gen_ai.mcp")
+        (AiOperation::McpOperation, ACTIVITY_EXECUTE, "gen_ai.mcp")
     } else {
-        (CLASS_LLM_INFERENCE, ACTIVITY_EXECUTE, "gen_ai.inference")
+        (AiOperation::Inference, ACTIVITY_EXECUTE, "gen_ai.inference")
     };
 
     let mut ev = EventRecord::new(event_type, json!({
         "span_name": span_name,
         "operation": combined.get("gen_ai.operation.name"),
         "finish_reasons": combined.get("gen_ai.response.finish_reasons"),
-    }), severity_for_class(class_uid));
+    }), severity_for_op(op));
 
-    ev.class_uid = Some(class_uid);
-    ev.type_uid = Some(class_uid * 100 + activity_id);
+    ev.set_op(op, activity_id);
     ev.activity_id = Some(activity_id);
     ev.status_id = Some(STATUS_SUCCESS);
     ev.source = Some("otlp".into());
@@ -364,11 +363,11 @@ fn log_to_event(rec: &Value, resource: &Attrs, redact: bool) -> Option<EventReco
         return None;
     }
 
-    let class_uid = match event_name {
+    let op = match event_name {
         "gen_ai.user.message" | "gen_ai.system.message" | "gen_ai.assistant.message"
-        | "gen_ai.choice" => CLASS_LLM_INFERENCE,
-        "gen_ai.tool.message" => CLASS_TOOL_EXECUTION,
-        _ => CLASS_LLM_INFERENCE,
+        | "gen_ai.choice" => AiOperation::Inference,
+        "gen_ai.tool.message" => AiOperation::ToolExecution,
+        _ => AiOperation::Inference,
     };
 
     let mut ev = EventRecord::new(
@@ -377,10 +376,9 @@ fn log_to_event(rec: &Value, resource: &Attrs, redact: bool) -> Option<EventReco
             "log_body": if redact { None } else { body.map(String::from) },
             "severity_text": rec.get("severityText"),
         }),
-        severity_for_class(class_uid),
+        severity_for_op(op),
     );
-    ev.class_uid = Some(class_uid);
-    ev.type_uid = Some(class_uid * 100 + ACTIVITY_EXECUTE);
+    ev.set_op(op, ACTIVITY_EXECUTE);
     ev.activity_id = Some(ACTIVITY_EXECUTE);
     ev.status_id = Some(STATUS_SUCCESS);
     ev.source = Some("otlp".into());
@@ -452,9 +450,9 @@ fn apply_common_attrs(ev: &mut EventRecord, attrs: &Attrs, redact: bool) {
     }
 }
 
-fn severity_for_class(class_uid: u32) -> &'static str {
-    match class_uid {
-        CLASS_TOOL_EXECUTION | CLASS_MCP_OPERATION => "medium",
+fn severity_for_op(op: AiOperation) -> &'static str {
+    match op {
+        AiOperation::ToolExecution | AiOperation::McpOperation => "medium",
         _ => "low",
     }
 }

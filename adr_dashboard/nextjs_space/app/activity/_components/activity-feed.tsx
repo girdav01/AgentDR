@@ -3,7 +3,7 @@ import { useFetch } from '@/hooks/use-fetch';
 import { Activity, Pause, Play } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getClassLabel, getClassIcon, getClassColor } from '@/lib/aitf';
+import { getOpLabel, getOpIcon, getOpColor } from '@/lib/aitf';
 
 const riskColors: Record<string, { dot: string; bg: string; text: string; border: string }> = {
   low: { dot: 'bg-emerald-400', bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-l-emerald-400' },
@@ -15,21 +15,21 @@ const riskColors: Record<string, { dot: string; bg: string; text: string; border
 export function ActivityFeed() {
   const [paused, setPaused] = useState(false);
   const [filter, setFilter] = useState('all');
-  const [classFilter, setClassFilter] = useState<number | null>(null);
+  const [opFilter, setOpFilter] = useState<string | null>(null);
   const { data } = useFetch('/api/events/recent?limit=100', paused ? 0 : 5000);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
 
   const allEvents = data?.events ?? [];
   let events = filter === 'all' ? allEvents : allEvents.filter((e: any) => e?.riskLevel === filter);
-  if (classFilter !== null) events = events.filter((e: any) => e?.classUid === classFilter);
+  if (opFilter !== null) events = events.filter((e: any) => e?.aiOperation === opFilter);
 
   useEffect(() => {
     if (autoScroll && scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [events?.length, autoScroll]);
 
-  // Unique OCSF classes in current events
-  const classUids = [...new Set(allEvents.map((e: any) => e?.classUid).filter(Boolean))] as number[];
+  // Unique AI operations in current events
+  const operations = [...new Set(allEvents.map((e: any) => e?.aiOperation).filter(Boolean))] as string[];
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -39,7 +39,7 @@ export function ActivityFeed() {
             <Activity className="w-7 h-7 text-primary" />
             Live Telemetry Feed
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">CoSAI OCSF Category 7 event stream • Auto-refresh 5s</p>
+          <p className="text-sm text-muted-foreground mt-1">AITF AI-operation event stream • Auto-refresh 5s</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -71,22 +71,22 @@ export function ActivityFeed() {
         </div>
         <div className="flex items-center gap-1 bg-card rounded-lg border border-border p-0.5 overflow-x-auto">
           <button
-            onClick={() => setClassFilter(null)}
+            onClick={() => setOpFilter(null)}
             className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
-              classFilter === null ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'
+              opFilter === null ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            All Classes
+            All Operations
           </button>
-          {classUids.sort().map((uid) => (
+          {operations.sort().map((op) => (
             <button
-              key={uid}
-              onClick={() => setClassFilter(classFilter === uid ? null : uid)}
+              key={op}
+              onClick={() => setOpFilter(opFilter === op ? null : op)}
               className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
-                classFilter === uid ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'
+                opFilter === op ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              {getClassIcon(uid)} {uid}
+              {getOpIcon(op)} {getOpLabel(op)}
             </button>
           ))}
         </div>
@@ -108,9 +108,9 @@ export function ActivityFeed() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
                     <span className={`w-2 h-2 rounded-full ${colors.dot} flex-shrink-0`} />
-                    {event?.classUid && (
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-primary/10 ${getClassColor(event.classUid)}`}>
-                        {getClassIcon(event.classUid)} {event.classUid}
+                    {event?.aiOperation && (
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-primary/10 ${getOpColor(event.aiOperation)}`}>
+                        {getOpIcon(event.aiOperation)} {getOpLabel(event.aiOperation)}
                       </span>
                     )}
                     <span className="font-mono text-xs font-semibold">

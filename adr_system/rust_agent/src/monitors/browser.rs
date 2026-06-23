@@ -6,9 +6,9 @@
 //! `/json`. We poll that endpoint, diff the page list across ticks, and
 //! emit:
 //!
-//!   - `browser_page_opened`  (class_uid=7002) when a new page appears
-//!   - `browser_page_closed`  (class_uid=7002) when an existing page disappears
-//!   - `browser_page_navigated` (class_uid=7002) when the URL changed
+//!   - `browser_page_opened`  (ai_operation=agent_action) when a new page appears
+//!   - `browser_page_closed`  (ai_operation=agent_action) when an existing page disappears
+//!   - `browser_page_navigated` (ai_operation=agent_action) when the URL changed
 //!
 //! Each event carries the destination URL, the page title and the
 //! WebSocket debugger URL so analysts can pivot into a deeper trace.
@@ -79,8 +79,7 @@ impl BrowserMonitor {
             if !reachable {
                 reachable = true;
                 let mut ev = EventRecord::new("browser_attached", json!({ "endpoint": self.endpoint }), "low");
-                ev.class_uid = Some(CLASS_AGENT_ACTION);
-                ev.type_uid = Some(CLASS_AGENT_ACTION * 100 + ACTIVITY_CREATE);
+                ev.set_op(AiOperation::AgentAction, ACTIVITY_CREATE);
                 ev.activity_id = Some(ACTIVITY_CREATE);
                 ev.source = Some("browser_monitor".into());
                 ev.message = Some(format!("browser CDP attached at {}", self.endpoint));
@@ -126,8 +125,7 @@ fn page_event(event_type: &str, p: &PageInfo, activity: u32, risk: &str) -> Even
         "title": p.title,
         "ws_url": p.ws_url,
     }), risk);
-    ev.class_uid = Some(CLASS_AGENT_ACTION);
-    ev.type_uid = Some(CLASS_AGENT_ACTION * 100 + activity);
+    ev.set_op(AiOperation::AgentAction, activity);
     ev.activity_id = Some(activity);
     ev.status_id = Some(STATUS_SUCCESS);
     ev.source = Some("browser_monitor".into());

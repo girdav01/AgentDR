@@ -8,7 +8,7 @@
 //! when:
 //!   all:
 //!     - field: class_uid
-//!       eq: 7006
+//!       eq: 2004        # OCSF Detection Finding (ai_operation=data_exfiltration)
 //!     - field: details.path
 //!       regex: "\\.aws/credentials"
 //!     - not:
@@ -180,7 +180,8 @@ mod tests {
 
     fn ev() -> Value {
         json!({
-            "class_uid": 7006,
+            "class_uid": 2004,
+            "ai_operation": "data_exfiltration",
             "risk_level": "critical",
             "details": { "path": "/home/u/.aws/credentials" },
             "actor": { "user": "david" },
@@ -192,7 +193,7 @@ mod tests {
         let y = r#"
 all:
   - field: class_uid
-    eq: 7006
+    eq: 2004
   - field: details.path
     contains: ".aws/credentials"
 "#;

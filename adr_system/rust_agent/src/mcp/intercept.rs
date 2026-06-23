@@ -5,7 +5,7 @@
 //!
 //! AgentDR re-execs the given command with its stdin/stdout piped through
 //! the agent. JSON-RPC frames are decoded as MCP messages on each side and
-//! a class_uid=7004 (MCP Operation) event is emitted per RPC, with
+//! an ai_operation=mcp_operation (API Activity 6003) event is emitted per RPC, with
 //! `tool_name` set to the JSON-RPC `method` and `mcp_server` set to the
 //! supplied name. The events go to the same JSONL log the rest of the
 //! agent writes to, so SIEM ingestion works identically.
@@ -37,8 +37,7 @@ pub async fn run(server_name: &str, cmd: &[String], log_path: &Path) -> Result<i
             json!({ "server": server_name, "cmd": cmd }),
             "low",
         );
-        ev.class_uid = Some(CLASS_MCP_OPERATION);
-        ev.type_uid = Some(CLASS_MCP_OPERATION * 100 + ACTIVITY_CREATE);
+        ev.set_op(AiOperation::McpOperation, ACTIVITY_CREATE);
         ev.activity_id = Some(ACTIVITY_CREATE);
         ev.status_id = Some(STATUS_SUCCESS);
         ev.mcp_server = Some(server_name.into());
@@ -109,8 +108,7 @@ pub async fn run(server_name: &str, cmd: &[String], log_path: &Path) -> Result<i
             json!({ "server": server_name, "exit_code": code }),
             "low",
         );
-        ev.class_uid = Some(CLASS_MCP_OPERATION);
-        ev.type_uid = Some(CLASS_MCP_OPERATION * 100 + ACTIVITY_DELETE);
+        ev.set_op(AiOperation::McpOperation, ACTIVITY_DELETE);
         ev.activity_id = Some(ACTIVITY_DELETE);
         ev.status_id = if code == 0 { Some(STATUS_SUCCESS) } else { Some(STATUS_FAILURE) };
         ev.mcp_server = Some(server_name.into());
@@ -159,8 +157,7 @@ fn emit_rpc(log: &EventLog, server_name: &str, raw: &str, direction: &str) {
     });
 
     let mut ev = EventRecord::new("mcp_rpc", details, risk);
-    ev.class_uid = Some(CLASS_MCP_OPERATION);
-    ev.type_uid = Some(CLASS_MCP_OPERATION * 100 + activity);
+    ev.set_op(AiOperation::McpOperation, activity);
     ev.activity_id = Some(activity);
     ev.status_id = if is_error { Some(STATUS_FAILURE) } else { Some(STATUS_SUCCESS) };
     ev.mcp_server = Some(server_name.into());

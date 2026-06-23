@@ -15,9 +15,10 @@
   *visibility* — a telemetry collector for one platform, shipping to
   one or two SIEMs. The next wave will be defined by *governance +
   response* — the "R" in EDR. AgentDR ships both today.
-* Standards momentum: CoSAI AITF, OCSF Category 7, and OTel `gen_ai.*`
-  semantic conventions all converged in early 2026. We are the
-  reference implementation of all three on the endpoint side.
+* Standards momentum: CoSAI AITF, OCSF, and OTel `gen_ai.*`
+  semantic conventions all converged in early 2026. AITF now reuses
+  standard OCSF classes enriched with an `ai_operation` profile. We are
+  the reference implementation of all three on the endpoint side.
 
 ## 2. Positioning
 
@@ -25,7 +26,7 @@
 |-----------------------|----------------------------------------------|--------------------------------------------|--------------------------------------------|
 | License               | Apache-2.0                                   | MIT / Apache-2.0 (varies)                  | Closed                                     |
 | Platforms             | macOS / Linux / Windows                      | typically single-OS (often macOS)          | All                                        |
-| AI-aware              | First-class (10 OCSF Cat-7 classes, 20 rules)| First-class                                | Bolt-on (mid-2026)                         |
+| AI-aware              | First-class (standard OCSF classes + ai_operation profile, 20 rules)| First-class                                | Bolt-on (mid-2026)                         |
 | Telemetry path        | OTLP hooks + MCP capture + kernel + browser  | OTLP collector only                        | Kernel-only                                |
 | Destinations          | 10 SIEM/observability exporters              | usually 1–2 (Splunk/Wazuh-style)           | Vendor's own backend                       |
 | Governance / blocking | Inline proxy + policy-as-code                | None                                       | Limited                                    |
@@ -60,9 +61,9 @@ side-by-side comparisons against other OSS efforts in the same space.
   incidents.
 * Top objections: "Splunk already costs us a fortune", "yet another
   schema to learn".
-* Counter: OCSF Category 7 is the schema all his other AI-aware tooling
-  will speak by 2027. AgentDR is the cheapest way to start producing
-  Cat-7 events today.
+* Counter: standard OCSF classes plus the AITF `ai_operation` profile is
+  the schema all his other AI-aware tooling will speak by 2027. AgentDR
+  is the cheapest way to start producing AITF-shaped OCSF events today.
 
 ### P3 — CISO / VP Security ("Janet")
 * Buyer / approver, board-facing.
@@ -88,8 +89,9 @@ side-by-side comparisons against other OSS efforts in the same space.
 1. **"AI agents are users now."** Frame the threat model.
 2. **"Visibility is not enough."** Distinguish from telemetry-only
    collectors. Show the inline-block demo or a policy-violation event.
-3. **"Built on open standards, on day one."** CoSAI AITF, OCSF Category 7,
-   OpenTelemetry `gen_ai.*`. We didn't invent another schema.
+3. **"Built on open standards, on day one."** CoSAI AITF (standard OCSF
+   classes + `ai_operation` profile), OpenTelemetry `gen_ai.*`. We
+   didn't invent another schema.
 4. **"Cross-platform, cross-SIEM, cross-agent."** macOS+Linux+Windows,
    10 exporters, 30+ agent signatures.
 5. **"Own your data."** No SaaS lock-in. Loopback OTLP. Local-first.
@@ -153,8 +155,9 @@ projects?"** use these three sentences, in this order:
 2. *"Most of them support one platform and one or two destinations.
    AgentDR supports all three OSes and ten destinations on day one."*
 3. *"Most of them ship their own JSON shape. AgentDR is the reference
-   implementation of CoSAI AITF — the same OCSF Category 7 schema your
-   other AI-aware tools will speak by 2027."*
+   implementation of CoSAI AITF — standard OCSF classes (API Activity,
+   Detection Finding, …) enriched with an `ai_operation` profile, the
+   same schema your other AI-aware tools will speak by 2027."*
 
 Never punch down at individual projects. Always frame the broader OSS
 movement as having proven the category and AgentDR as taking the next

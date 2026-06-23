@@ -37,25 +37,27 @@ export async function GET(req: NextRequest, ctx: { params: { traceId: string } }
     }),
   ]);
 
-  // Cheap "kill chain" derivation: cluster events by class_uid and present
-  // them as MITRE-style phases (initial access ~ 7002, execution ~ 7003,
-  // collection ~ 7006, etc.).
-  const phaseFor = (cu: number | null) => {
-    switch (cu) {
-      case 7002: return 'agent_launch';
-      case 7001: return 'inference';
-      case 7003: return 'tool_execution';
-      case 7004: return 'mcp_call';
-      case 7005: return 'prompt_injection';
-      case 7006: return 'data_access';
-      case 7007: return 'privilege_change';
-      case 7008: return 'compliance_drift';
-      default:    return 'other';
+  // Cheap "kill chain" derivation: cluster events by ai_operation and present
+  // them as MITRE-style phases (initial access ~ agent_action, execution ~
+  // tool_execution, collection ~ data_exfiltration, etc.).
+  const phaseFor = (op: string | null) => {
+    switch (op) {
+      case 'agent_action':          return 'agent_launch';
+      case 'delegation':            return 'agent_launch';
+      case 'inference':             return 'inference';
+      case 'tool_execution':        return 'tool_execution';
+      case 'mcp_operation':         return 'mcp_call';
+      case 'prompt_injection':      return 'prompt_injection';
+      case 'data_retrieval':        return 'data_access';
+      case 'data_exfiltration':     return 'data_access';
+      case 'permission_escalation': return 'privilege_change';
+      case 'compliance_violation':  return 'compliance_drift';
+      default:                      return 'other';
     }
   };
   const phases: Record<string, number> = {};
   for (const ev of events) {
-    const p = phaseFor(ev.classUid);
+    const p = phaseFor(ev.aiOperation);
     phases[p] = (phases[p] ?? 0) + 1;
   }
 

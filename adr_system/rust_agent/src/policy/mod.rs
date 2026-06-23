@@ -3,8 +3,8 @@
 //! Policies live in YAML under `cosai-community/policies/policies.yaml` and
 //! describe a match condition over an EventRecord plus an action
 //! (`alert | block | log`). The engine evaluates every policy against
-//! every event the agent observes and emits a class_uid=7008 (Compliance
-//! Violation) event for each match. The inline blocking proxy
+//! every event the agent observes and emits a Compliance Finding (OCSF 2003,
+//! ai_operation=compliance_violation) event for each match. The inline blocking proxy
 //! (`src/proxy/`) re-uses the same engine so deny decisions are
 //! policy-driven end-to-end.
 //!

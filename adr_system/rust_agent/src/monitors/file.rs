@@ -113,7 +113,7 @@ impl FileMonitor {
                 "low"
             };
 
-            let class_uid = if skill { CLASS_MCP_OPERATION } else { CLASS_TOOL_EXECUTION };
+            let op = if skill { AiOperation::McpOperation } else { AiOperation::ToolExecution };
 
             let mut msg = format!("File {}: {}", event_type.replace("file_", ""), filename);
             if skill {
@@ -130,8 +130,7 @@ impl FileMonitor {
                 risk,
             );
             ev.source = Some("file_monitor".into());
-            ev.class_uid = Some(class_uid);
-            ev.type_uid = Some(class_uid * 100 + activity);
+            ev.set_op(op, activity);
             ev.activity_id = Some(activity);
             ev.status_id = Some(STATUS_SUCCESS);
             ev.message = Some(msg);

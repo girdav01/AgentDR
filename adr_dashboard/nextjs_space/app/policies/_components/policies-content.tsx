@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { DETECTION_RULES, OCSF_CLASSES } from '@/lib/aitf';
+import { DETECTION_RULES } from '@/lib/aitf';
 
 const SEVERITY_COLORS: Record<string, string> = {
   low: 'bg-green-500/20 text-green-400 border-green-500/30',

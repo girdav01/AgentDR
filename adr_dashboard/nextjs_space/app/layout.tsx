@@ -13,14 +13,14 @@ export const dynamic = 'force-dynamic';
 export const metadata = {
   metadataBase: new URL(process.env.NEXTAUTH_URL ?? 'http://localhost:3000'),
   title: 'CoSAI ADR — CoSAI Telemetry Framework',
-  description: 'Agent Detection & Response powered by CoSAI OCSF Category 7 telemetry',
+  description: 'Agent Detection & Response powered by AITF OCSF class-reuse telemetry',
   icons: {
     icon: '/favicon.svg',
     shortcut: '/favicon.svg',
   },
   openGraph: {
     title: 'CoSAI ADR — CoSAI Telemetry Framework',
-    description: 'Agent Detection & Response powered by CoSAI OCSF Category 7 telemetry',
+    description: 'Agent Detection & Response powered by AITF OCSF class-reuse telemetry',
     images: ['/og-image.png'],
   },
 };

@@ -1,7 +1,7 @@
 //! Enumerate MCP server configurations across known AI runtimes.
 //!
-//! Every server declared in any of the following places becomes a class_uid
-//! 7004 (MCP Operation) event with `activity_id = 2 (Read)`, so SIEM rules
+//! Every server declared in any of the following places becomes an
+//! ai_operation=mcp_operation (API Activity 6003) event with `activity_id = 2 (Read)`, so SIEM rules
 //! can baseline "which MCP servers are present on which endpoints."
 //!
 //! Scanned locations:
@@ -180,8 +180,7 @@ fn to_event(s: &DiscoveredServer) -> EventRecord {
         Value::Object(details.into_iter().collect()),
         "low",
     );
-    ev.class_uid = Some(CLASS_MCP_OPERATION);
-    ev.type_uid = Some(CLASS_MCP_OPERATION * 100 + ACTIVITY_READ);
+    ev.set_op(AiOperation::McpOperation, ACTIVITY_READ);
     ev.activity_id = Some(ACTIVITY_READ);
     ev.status_id = Some(STATUS_SUCCESS);
     ev.mcp_server = Some(s.name.clone());

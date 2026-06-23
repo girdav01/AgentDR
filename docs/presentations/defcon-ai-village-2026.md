@@ -18,8 +18,8 @@ prompts and completions. Neither sees *which model called which tool
 against which file with which approval*. We'll show how to fill that
 gap with open source: a Rust endpoint agent that captures OpenTelemetry
 `gen_ai.*` signals, inventories and proxies MCP traffic, applies
-inline policy-as-code, and emits CoSAI / OCSF Category 7 events to ten
-SIEM backends. Live demos on macOS and Linux include a credential-read
+inline policy-as-code, and emits CoSAI AITF events (standard OCSF
+classes + an `ai_operation` profile) to ten SIEM backends. Live demos on macOS and Linux include a credential-read
 that names the agent that did it and a 403 from an inline blocking
 proxy when a coding agent reaches for a non-allow-listed AI provider.
 
@@ -215,8 +215,9 @@ terminal."*
    semantically."*
 2. Show the resulting `~/.claude/settings.json` — *"AgentDR-managed
    keys, marker block, reversible with `hooks uninstall`."*
-3. Fire the OTel curl. Show the JSONL line — *"class_uid 7001 for the
-   inference, 7003 for the tool call, trace_id propagated."*
+3. Fire the OTel curl. Show the JSONL line — *"API Activity 6003 with
+   ai_operation=inference for the inference, 6003 / tool_execution for
+   the tool call, trace_id propagated."*
 4. `adr-agent mcp inventory --jsonl` — *"Most comparable OSS efforts
    list MCP inventory as an explicit non-goal. Here it is across eight
    known config locations."*
@@ -227,28 +228,32 @@ command produce one named result. Don't deep-dive the JSON.
 
 ---
 
-## Wire format — why we picked OCSF Category 7
+## Wire format — why we picked AITF OCSF Class-Reuse
 
 ```
 {
-  "timestamp":   "2026-08-08T17:22:08.421Z",
-  "event_type":  "gen_ai.tool",
-  "class_uid":   7003,            ← OCSF AI Activity (Tool Execution)
-  "type_uid":    700305,          ← class * 100 + activity
-  "activity_id": 5,               ← Execute
-  "severity_id": 3,
-  "provider":    "anthropic",
-  "model":       "claude-sonnet-4-5",
-  "tool_name":   "read_file",
-  "trace_id":    "9b7f0c8d2e1a4f5b6c7d8e9f0a1b2c3d",
-  "actor":       {"user":"david","host":"laptop-david"},
-  "compliance":  {"frameworks":["OWASP-LLM-Top10","NIST-AI-RMF"]}
+  "timestamp":    "2026-08-08T17:22:08.421Z",
+  "event_type":   "gen_ai.tool",
+  "class_uid":    6003,            ← OCSF API Activity (reused)
+  "ai_operation": "tool_execution",← AITF profile semantic
+  "type_uid":     600305,          ← class * 100 + activity
+  "activity_id":  5,               ← Execute
+  "severity_id":  3,
+  "provider":     "anthropic",
+  "model":        "claude-sonnet-4-5",
+  "tool_name":    "read_file",
+  "trace_id":     "9b7f0c8d2e1a4f5b6c7d8e9f0a1b2c3d",
+  "actor":        {"user":"david","host":"laptop-david"},
+  "compliance":   {"frameworks":["OWASP-LLM-Top10","NIST-AI-RMF"]}
 }
 ```
 
 note:
-*"Every event is OCSF Category 7. Same shape your other AI-aware tools
-will speak in two years. We didn't invent a schema — we're the
+*"AITF dropped its bespoke Category 7 — every event now reuses a
+standard OCSF class (here, API Activity 6003) enriched with an
+`ai_operation` profile. Same principle OCSF itself follows: reuse
+classes, don't mint new ones per domain. Same shape your other AI-aware
+tools will speak in two years. We didn't invent a schema — we're the
 reference implementation of one Cisco, Google, IBM and NVIDIA all
 signed up to."*
 
@@ -269,13 +274,17 @@ signed up to."*
 4. Start the inline proxy:
    `adr-agent proxy --bind 127.0.0.1:18080 --allow anthropic.com`
 5. With `HTTPS_PROXY` set, `curl https://api.openai.com` — show the
-   403 in real time, then tail the JSONL to show the
-   `class_uid=7008`, `status_id=3` Block event.
+   403 in real time, then tail the JSONL to show the Compliance Finding
+   (`class_uid=2003`, `ai_operation=compliance_violation`),
+   `status_id=3` Block event.
 6. With the same proxy, `curl https://api.anthropic.com` — show 200,
-   then the `class_uid=7001 proxy_allow` event.
+   then the `class_uid=6003` (`ai_operation=inference`) `proxy_allow`
+   event.
 7. Fire the OTel `gen_ai.approval.decision=deny` span. Show the
-   `class_uid=7007` event. *"Comparable collectors don't capture
-   approvals at all. We map them straight to Permission Escalation."*
+   Detection Finding (`class_uid=2004`,
+   `ai_operation=permission_escalation`) event. *"Comparable collectors
+   don't capture approvals at all. We map them straight to a
+   permission-escalation finding."*
 
 note:
 This is the headline demo. Make sure the proxy logs are scrolling on a
@@ -305,8 +314,9 @@ kind, this is the moment of the talk.**
 note:
 *"YAML, not CEL, not Rego. We tried, the matcher is 150 lines, four
 unit tests, and operators ship a PR-shaped policy bundle. Same engine
-backs the inline blocking proxy. Same engine fires class_uid 7008
-events into your SIEM."*
+backs the inline blocking proxy. Same engine fires Compliance Finding
+(class_uid 2003, ai_operation=compliance_violation) events into your
+SIEM."*
 
 ---
 
@@ -349,11 +359,11 @@ Users: david
 Agents: claude-code
 
 Timeline:
-  14:22:08 [7002] process_started   claude-code (low)
-  14:22:08 [7001] gen_ai.inference  anthropic/claude-sonnet-4-5 (low)
-  14:22:11 [7003] gen_ai.tool       shell — "git status" (medium)
-  14:22:15 [7006] alert_credential_access  candidates=[claude-code pid=14322 user=david] (critical)
-  14:22:16 [7008] policy_block      AGENTDR-POL-001 (critical, BLOCKED)
+  14:22:08 [9001] process_started   claude-code (low)
+  14:22:08 [6003] gen_ai.inference  anthropic/claude-sonnet-4-5 (low)
+  14:22:11 [6003] gen_ai.tool       shell — "git status" (medium)
+  14:22:15 [2004] alert_credential_access  candidates=[claude-code pid=14322 user=david] (critical)
+  14:22:16 [2003] policy_block      AGENTDR-POL-001 (critical, BLOCKED)
 ```
 
 note:
@@ -438,7 +448,7 @@ tools that already do it well."*
 
 ```
 CoSAI AITF                        — AI Telemetry Framework (reference impl)
-OCSF Category 7                   — AI Activity (10 classes; we emit all 10)
+AITF OCSF Class-Reuse             — reuses standard OCSF classes + ai_operation profile
 OpenTelemetry gen_ai.* semconv    — collector + hook installer + Otel mapping
 OWASP LLM Top-10                  — on every event under compliance.mappings
 NIST AI RMF                       — on every event under compliance.frameworks
@@ -523,8 +533,8 @@ Take questions. Stretch goals if there's time:
   layer."*
 * *"Yes, the same engine backs the SIEM exporters and the inline
   proxy. That's the whole point — one event model, two consumers."*
-* *"OCSF Category 7 is the only schema that's going to matter in
-  2027. Why pay parsing tax twice?"*
+* *"Standard OCSF classes plus an AITF ai_operation profile is the only
+  schema that's going to matter in 2027. Why pay parsing tax twice?"*
 
 ## E. References
 

@@ -1,6 +1,7 @@
 //! Policy engine. Loads policies from YAML at startup, evaluates every
-//! event against every policy, and emits class_uid=7008 (Compliance
-//! Violation) events for matches with the appropriate Decision attached.
+//! event against every policy, and emits Compliance Finding events (OCSF
+//! 2003, ai_operation=compliance_violation) for matches with the
+//! appropriate Decision attached.
 
 use super::matcher::Match;
 use crate::models::*;
@@ -14,7 +15,7 @@ use std::path::{Path, PathBuf};
 pub enum Action {
     /// Just log a record (no severity escalation).
     Log,
-    /// Emit a Compliance Violation event (class_uid 7008).
+    /// Emit a Compliance Finding event (OCSF 2003).
     Alert,
     /// Same as Alert, plus signal upstream consumers (the proxy) to
     /// drop the in-flight network attempt.
@@ -108,7 +109,7 @@ impl PolicyEngine {
     pub fn is_empty(&self) -> bool { self.policies.is_empty() }
 
     /// Evaluate `event` against every policy. Returns the strongest
-    /// action and one EventRecord per match (class_uid=7008).
+    /// action and one EventRecord per match (Compliance Finding, OCSF 2003).
     pub fn evaluate(&self, event: &EventRecord) -> Decision {
         let serialized = serde_json::to_value(event).unwrap_or(Value::Null);
         let mut matched: Vec<MatchedPolicy> = Vec::new();
@@ -158,8 +159,7 @@ fn make_violation_event(pol: &Policy, src: &EventRecord) -> EventRecord {
         }),
         &pol.severity,
     );
-    ev.class_uid = Some(CLASS_COMPLIANCE_VIOLATION);
-    ev.type_uid = Some(CLASS_COMPLIANCE_VIOLATION * 100 + activity);
+    ev.set_op(AiOperation::ComplianceViolation, activity);
     ev.activity_id = Some(activity);
     ev.status_id = if matches!(pol.action, Action::Block) {
         Some(STATUS_BLOCKED)

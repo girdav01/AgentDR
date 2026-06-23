@@ -3,7 +3,7 @@ import { useFetch } from '@/hooks/use-fetch';
 import { BarChart3 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
-import { OCSF_CLASS_COLORS, getClassLabel, getClassIcon } from '@/lib/aitf';
+import { getOpLabel, getOpIcon, getOpHex } from '@/lib/aitf';
 
 const TimelineChart = dynamic(() => import('./timeline-chart'), { ssr: false, loading: () => <ChartSkeleton /> });
 const TypeDistributionChart = dynamic(() => import('./type-distribution-chart'), { ssr: false, loading: () => <ChartSkeleton /> });
@@ -30,25 +30,24 @@ export function AnalyticsContent() {
           <BarChart3 className="w-7 h-7 text-primary" />
           CoSAI Analytics
         </h1>
-        <p className="text-sm text-muted-foreground mt-1">CoSAI Telemetry Framework — OCSF Category 7 insights</p>
+        <p className="text-sm text-muted-foreground mt-1">CoSAI Telemetry Framework — AITF AI-operation insights</p>
       </div>
 
-      {/* OCSF Class Distribution */}
+      {/* AITF AI-Operation Distribution */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-card rounded-xl border border-border p-4">
-        <h2 className="font-semibold mb-4 text-sm">OCSF Event Class Distribution (7001–7010)</h2>
+        <h2 className="font-semibold mb-4 text-sm">AITF AI-Operation Distribution</h2>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          {(stats?.eventsByClass ?? []).map((cls: any) => {
-            const maxCount = Math.max(...(stats?.eventsByClass ?? []).map((c: any) => c.count), 1);
-            const color = OCSF_CLASS_COLORS[cls.classUid] ?? '#888';
+          {(stats?.eventsByOperation ?? []).map((op: any) => {
+            const color = op.hex ?? getOpHex(op.aiOperation);
             return (
-              <div key={cls.classUid} className="relative overflow-hidden rounded-lg border border-border p-3 bg-background/50">
+              <div key={op.aiOperation} className="relative overflow-hidden rounded-lg border border-border p-3 bg-background/50">
                 <div className="absolute bottom-0 left-0 right-0 h-1" style={{ backgroundColor: color, opacity: 0.6 }} />
                 <div className="flex items-center gap-1.5 mb-2">
-                  <span className="text-base">{getClassIcon(cls.classUid)}</span>
-                  <span className="font-mono text-[10px] font-bold" style={{ color }}>{cls.classUid}</span>
+                  <span className="text-base">{getOpIcon(op.aiOperation)}</span>
+                  <span className="font-mono text-[10px] font-bold" style={{ color }}>{op.classUid}</span>
                 </div>
-                <p className="text-xl font-bold font-mono">{cls.count}</p>
-                <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{cls.label}</p>
+                <p className="text-xl font-bold font-mono">{op.count}</p>
+                <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{op.label ?? getOpLabel(op.aiOperation)}</p>
               </div>
             );
           })}

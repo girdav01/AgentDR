@@ -5,7 +5,7 @@ import { ScrollText, Search, ChevronLeft, ChevronRight, ChevronDown, X } from 'l
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
-import { getClassLabel, getClassIcon, getClassColor, OCSF_CLASSES } from '@/lib/aitf';
+import { getOpLabel, getOpIcon, getOpColor, AI_OPERATIONS } from '@/lib/aitf';
 
 const riskColors: Record<string, string> = {
   low: 'bg-emerald-500/15 text-emerald-400',
@@ -20,7 +20,7 @@ export function LogViewer() {
   const [riskLevel, setRiskLevel] = useState('');
   const [source, setSource] = useState('');
   const [agent, setAgent] = useState('');
-  const [classUid, setClassUid] = useState('');
+  const [aiOperation, setAiOperation] = useState('');
   const [provider, setProvider] = useState('');
   const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -35,10 +35,10 @@ export function LogViewer() {
     if (riskLevel) params.set('riskLevel', riskLevel);
     if (source) params.set('source', source);
     if (agent) params.set('agent', agent);
-    if (classUid) params.set('classUid', classUid);
+    if (aiOperation) params.set('aiOperation', aiOperation);
     if (provider) params.set('provider', provider);
     return `/api/events?${params.toString()}`;
-  }, [search, eventType, riskLevel, source, agent, classUid, provider, page]);
+  }, [search, eventType, riskLevel, source, agent, aiOperation, provider, page]);
 
   const { data, isLoading } = useFetch(buildUrl());
   const { data: statsData } = useFetch('/api/stats');
@@ -53,10 +53,10 @@ export function LogViewer() {
   const providers = (statsData?.eventsByProvider ?? []).map((e: any) => e?.provider).filter(Boolean);
 
   const clearFilters = () => {
-    setSearch(''); setEventType(''); setRiskLevel(''); setSource(''); setAgent(''); setClassUid(''); setProvider(''); setPage(1);
+    setSearch(''); setEventType(''); setRiskLevel(''); setSource(''); setAgent(''); setAiOperation(''); setProvider(''); setPage(1);
   };
 
-  const hasFilters = search || eventType || riskLevel || source || agent || classUid || provider;
+  const hasFilters = search || eventType || riskLevel || source || agent || aiOperation || provider;
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -66,7 +66,7 @@ export function LogViewer() {
             <ScrollText className="w-7 h-7 text-primary" />
             Event Log Explorer
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">CoSAI OCSF Category 7 telemetry events • {total} total</p>
+          <p className="text-sm text-muted-foreground mt-1">AITF AI-operation telemetry events • {total} total</p>
         </div>
       </div>
 
@@ -87,10 +87,10 @@ export function LogViewer() {
           )}
         </div>
         <div className="flex flex-wrap gap-2">
-          <select value={classUid} onChange={(e) => { setClassUid(e.target.value); setPage(1); }} className="h-8 px-2 rounded-md border border-border bg-background text-xs">
-            <option value="">All OCSF Classes</option>
-            {Object.entries(OCSF_CLASSES).map(([uid, info]) => (
-              <option key={uid} value={uid}>{info.icon} {uid} — {info.label}</option>
+          <select value={aiOperation} onChange={(e) => { setAiOperation(e.target.value); setPage(1); }} className="h-8 px-2 rounded-md border border-border bg-background text-xs">
+            <option value="">All AI Operations</option>
+            {Object.entries(AI_OPERATIONS).map(([op, info]) => (
+              <option key={op} value={op}>{info.icon} {info.label}</option>
             ))}
           </select>
           <select value={provider} onChange={(e) => { setProvider(e.target.value); setPage(1); }} className="h-8 px-2 rounded-md border border-border bg-background text-xs">
@@ -119,7 +119,7 @@ export function LogViewer() {
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Time</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">OCSF Class</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">AI Operation</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Event</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Risk</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Provider / Model</th>
@@ -139,9 +139,10 @@ export function LogViewer() {
                       {new Date(event.timestamp).toLocaleString()}
                     </td>
                     <td className="px-4 py-2.5">
-                      {event.classUid ? (
-                        <span className={`text-xs font-mono font-bold ${getClassColor(event.classUid)}`}>
-                          {getClassIcon(event.classUid)} {event.classUid}
+                      {event.aiOperation ? (
+                        <span className={`text-xs font-mono font-bold ${getOpColor(event.aiOperation)}`}>
+                          {getOpIcon(event.aiOperation)} {getOpLabel(event.aiOperation)}
+                          {event.classUid ? <span className="ml-1 text-[10px] text-muted-foreground">({event.classUid})</span> : null}
                         </span>
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>

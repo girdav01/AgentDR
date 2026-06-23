@@ -68,12 +68,14 @@ impl Exporter for Elastic {
             let ts_iso = DateTime::parse_from_rfc3339(&ev.timestamp)
                 .map(|d| d.to_rfc3339())
                 .unwrap_or_else(|_| ev.timestamp.clone());
-            let category = match ev.class_uid {
-                Some(7001) | Some(7005) => "process",
-                Some(7002) => "process",
-                Some(7003) => "process",
-                Some(7004) => "configuration",
-                Some(7006) | Some(7007) | Some(7008) => "intrusion_detection",
+            // Map the AITF ai_operation profile onto ECS event.category.
+            let category = match ev.ai_operation.as_deref() {
+                Some("inference") | Some("agent_action") | Some("tool_execution") => "process",
+                Some("mcp_operation") | Some("asset_inventory") => "configuration",
+                Some("data_exfiltration") | Some("permission_escalation")
+                | Some("prompt_injection") | Some("guardrail") | Some("cost_anomaly")
+                | Some("compliance_violation") | Some("supply_chain") => "intrusion_detection",
+                Some("identity") => "authentication",
                 _ => "other",
             };
             let kind = if ev.event_type.starts_with("alert_") { "alert" } else { "event" };
@@ -94,6 +96,7 @@ impl Exporter for Elastic {
                 "host": { "hostname": hostname },
                 "labels": {
                     "aitf.class_uid": ev.class_uid,
+                    "aitf.ai_operation": ev.ai_operation,
                     "aitf.activity_id": ev.activity_id,
                     "aitf.risk_level": ev.risk_level,
                     "aitf.provider": ev.provider,
