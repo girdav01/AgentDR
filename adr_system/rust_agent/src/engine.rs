@@ -3,6 +3,7 @@
 use crate::config::Config;
 use crate::detectors::PatternDetector;
 use crate::exporters;
+use crate::ingest::openshell::OpenShellIngest;
 use crate::ingest::otlp::{self, OtlpSink};
 use crate::mcp;
 use crate::models::*;
@@ -129,6 +130,16 @@ impl AgentEngine {
             tokio::spawn(async move {
                 let sink = OtlpSink::new(otlp_tx, redact);
                 otlp::serve(&bind, max, sink, otlp_shutdown).await;
+            });
+        }
+
+        // ── Tier 1: NVIDIA OpenShell audit-log ingest ──
+        if self.config.openshell.enabled {
+            let os_tx = event_tx.clone();
+            let os_shutdown = shutdown_rx.clone();
+            let os_cfg = self.config.openshell.clone();
+            tokio::spawn(async move {
+                OpenShellIngest::new(&os_cfg, os_tx).run(os_shutdown).await;
             });
         }
 

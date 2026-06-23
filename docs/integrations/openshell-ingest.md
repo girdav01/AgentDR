@@ -26,11 +26,27 @@ OpenShell and the agents it hosts are detected by the standard signature pack:
 
 No code change is required for this level.
 
-### 2. Telemetry ingest (proposed — small code addition)
+### 2. Telemetry ingest (implemented — `src/ingest/openshell.rs`)
 
-Map OpenShell Gateway audit decisions onto the AITF OCSF Class-Reuse Model so
-they flow through the same `EventRecord` pipeline and exporters as everything
-else AgentDR observes.
+AgentDR tails OpenShell's OCSF JSON export and maps each Gateway decision onto
+the AITF OCSF Class-Reuse Model so it flows through the same `EventRecord`
+pipeline, detectors, policies, and exporters as everything else AgentDR
+observes. Enable it in config:
+
+```toml
+[openshell]
+enabled = true
+# Newest matching file is tailed; OpenShell rotates daily.
+log_glob = "/var/log/openshell-ocsf*.log"
+poll_interval_seconds = 5
+```
+
+(Set `ocsf_json_enabled` on the OpenShell side so the JSON export is written.)
+
+The ingest reads only newly-appended complete lines, follows daily rotation,
+attributes each decision to the sandboxed agent (via the signature pack), and
+preserves OpenShell's `metadata.correlation_uid` as the AITF `trace_id`. The
+mapping it applies:
 
 | OpenShell Gateway decision | AgentDR `ai_operation` | Reused OCSF `class_uid` | `status_id` |
 |---|---|---|---|
@@ -45,17 +61,16 @@ Carry OpenShell's own fields into the AITF namespaces: sandbox / agent id →
 → `details`. Preserve the Gateway's correlation id as the AITF `trace_id` so a
 multi-step agent task can be reconstructed end-to-end.
 
-#### Suggested implementation
+#### Implementation
 
-OpenShell can surface its audit trail as a log stream or webhook. Two low-effort
-paths, mirroring patterns already in the codebase:
+`src/ingest/openshell.rs` polls the newest `*.log` matching the configured glob,
+reads only newly-appended complete lines (handling daily rotation and
+truncation), parses each as OCSF JSON, and builds an `EventRecord` via
+`EventRecord::set_op(AiOperation::…, activity_id)` following the table above. It
+is spawned from the engine when `[openshell] enabled = true`.
 
-1. **OTLP** — if OpenShell exports OpenTelemetry, point it at AgentDR's existing
-   loopback OTLP server (`src/ingest/otlp.rs`); only an attribute-mapping pass is
-   needed for the `openshell.*` / Gateway fields.
-2. **Dedicated ingest source** — a small `src/ingest/openshell.rs` that tails the
-   Gateway audit log (or accepts its webhook) and builds an `EventRecord` via
-   `EventRecord::set_op(AiOperation::…, activity_id)`, following the table above.
+If OpenShell is additionally configured to export OpenTelemetry, AgentDR's
+existing loopback OTLP server (`src/ingest/otlp.rs`) is an alternative path.
 
 ### Policy alignment
 

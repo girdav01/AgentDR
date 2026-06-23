@@ -449,6 +449,7 @@ async fn main() {
                 watch_dirs = ?cfg.watch_directories,
                 detection_rules = 20,
                 otlp_enabled = cfg.otlp.enabled,
+                openshell_ingest = cfg.openshell.enabled,
                 mcp_inventory_on_start = cfg.mcp.inventory_on_start,
                 "CoSAI ADR Agent v{} (Rust) — AITF OCSF Class-Reuse",
                 env!("CARGO_PKG_VERSION"),
