@@ -1,6 +1,6 @@
 {
   "$schema": "https://cosai.dev/schemas/agent-signatures-v1.json",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "CoSAI Community Agent Detection Signatures — process-name patterns and metadata used by ADR endpoint agents to identify AI agents running on monitored hosts.",
   "categories": {
     "coding":     { "label": "Coding Assistants",     "icon": "💻", "color": "text-blue-400",    "description": "AI coding assistants and IDE-integrated agents" },
@@ -20,6 +20,7 @@
     { "id": "cline",            "name": "Cline",                "framework": "VSCode Extension",   "category": "coding",     "risk": "low",    "process_patterns": ["cline"] },
     { "id": "augment-code",     "name": "Augment Code",         "framework": "VSCode Extension",   "category": "coding",     "risk": "low",    "process_patterns": ["augment"] },
     { "id": "continue-dev",     "name": "Continue.dev",         "framework": "VSCode Extension",   "category": "coding",     "risk": "low",    "process_patterns": ["continue"] },
+    { "id": "opencode",         "name": "OpenCode",             "framework": "OpenCode CLI",       "category": "coding",     "risk": "low",    "process_patterns": ["opencode"] },
 
     { "id": "openclaw",         "name": "OpenClaw",             "framework": "OpenClaw Runtime",   "category": "general",    "risk": "high",   "process_patterns": ["openclaw", "moltbot", "clawdbot"] },
     { "id": "nemoclaw",         "name": "NemoClaw",             "framework": "NVIDIA NemoClaw",    "category": "general",    "risk": "medium", "process_patterns": ["nemoclaw"] },
@@ -27,12 +28,14 @@
     { "id": "babyagi",          "name": "BabyAGI",              "framework": "BabyAGI",            "category": "general",    "risk": "medium", "process_patterns": ["babyagi"] },
     { "id": "superagi",         "name": "SuperAGI",             "framework": "SuperAGI",           "category": "general",    "risk": "medium", "process_patterns": ["superagi"] },
     { "id": "chatgpt",          "name": "ChatGPT",              "framework": "OpenAI",             "category": "general",    "risk": "medium", "process_patterns": ["chatgpt", "com.openai.chat"] },
+    { "id": "hermes-agent",     "name": "Hermes Agent",         "framework": "Nous Research",      "category": "general",    "risk": "high",   "process_patterns": ["hermes-agent", "hermes_agent", "nous-hermes", "hermesd"] },
 
     { "id": "langchain",        "name": "LangChain Agent",      "framework": "LangChain",          "category": "workflow",   "risk": "low",    "process_patterns": ["langchain"] },
     { "id": "crewai",           "name": "CrewAI",               "framework": "CrewAI",             "category": "workflow",   "risk": "medium", "process_patterns": ["crewai"] },
     { "id": "autogen",          "name": "AutoGen",              "framework": "Microsoft AutoGen",  "category": "workflow",   "risk": "medium", "process_patterns": ["autogen"] },
     { "id": "llamaindex",       "name": "LlamaIndex Agent",     "framework": "LlamaIndex",         "category": "workflow",   "risk": "low",    "process_patterns": ["llamaindex"] },
     { "id": "smolagents",       "name": "SmolAgents",           "framework": "HuggingFace",        "category": "workflow",   "risk": "medium", "process_patterns": ["smolagents"] },
+    { "id": "nvidia-openshell", "name": "NVIDIA OpenShell",      "framework": "NVIDIA Agent Toolkit", "category": "workflow", "risk": "medium", "process_patterns": ["openshell", "openshell-gateway", "nv-openshell"] },
 
     { "id": "m365-copilot",     "name": "M365 Copilot",         "framework": "Microsoft 365",      "category": "enterprise", "risk": "medium", "process_patterns": ["microsoft.copilot"] },
     { "id": "edge-copilot",     "name": "Edge Copilot",         "framework": "Microsoft Edge",     "category": "enterprise", "risk": "medium", "process_patterns": ["msedge-copilot"] },

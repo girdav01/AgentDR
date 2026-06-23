@@ -346,6 +346,9 @@ static SKILL_PATHS: &[&str] = &[
     ".autogpt/plugins",
     "plugins/",
     ".agent/tools",
+    ".hermes/skills",
+    ".nous/skills",
+    "agentskills",
 ];
 
 pub fn is_skill_path(filepath: &str) -> bool {
