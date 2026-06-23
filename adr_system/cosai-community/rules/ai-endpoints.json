@@ -1,9 +1,11 @@
 {
   "$schema": "https://cosai.dev/schemas/ai-endpoints-v1.json",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "CoSAI Community AI Provider Endpoint Signatures — hostname patterns used to classify outbound network connections to AI inference APIs.",
   "endpoints": [
     { "patterns": ["openai", "api.openai.com"],   "provider": "OpenAI",       "model": "gpt-4o" },
+    { "patterns": ["openrouter.ai", "openrouter"], "provider": "OpenRouter",  "model": "routed-model" },
+    { "patterns": ["nousresearch.com", "portal.nousresearch.com"], "provider": "Nous Research", "model": "hermes" },
     { "patterns": ["anthropic", "api.anthropic.com"], "provider": "Anthropic",  "model": "claude-3.5-sonnet" },
     { "patterns": ["googleapis", "generativelanguage"], "provider": "Google",  "model": "gemini-pro" },
     { "patterns": ["azure"],                        "provider": "Azure OpenAI", "model": "gpt-4",          "requires_also": "openai" },
