@@ -76,7 +76,7 @@ Where most of those projects stop:
 * **No MCP capture.** Often listed as an explicit non-goal.
 * **No kernel layer, no shell capture, no browser, no credential
   attribution.** All explicit non-goals in the projects we've surveyed.
-* **Custom JSON shapes.** Not OCSF Category 7. Not AITF. Operators who
+* **Custom JSON shapes.** Not OCSF. Not AITF. Operators who
   deploy today will have to re-parse their telemetry in 2027 once the
   industry settles on a standard.
 
@@ -107,12 +107,20 @@ Continue.dev, VS Code, project-level, operator-supplied). An MCP
 stdio-proxy that captures every JSON-RPC message on the way in and
 out of a wrapped server.
 
-We emit ten OCSF Category 7 event classes: LLM Inference (7001), Agent
-Action (7002), Tool Execution (7003), MCP Operation (7004), Prompt
-Injection (7005), Data Exfiltration (7006), Permission Escalation
-(7007), Compliance Violation (7008), Guardrail Event (7009), Cost
-Anomaly (7010). Each event carries an OpenTelemetry trace_id and
-span_id, so multi-step agent activity reconstructs end-to-end.
+Following the latest AITF spec, we don't mint a bespoke event class.
+AITF dropped its Category 7 and now **reuses standard OCSF classes
+enriched with an `ai_operation` profile** — the same principle OCSF
+itself follows: reuse existing classes rather than invent new ones for
+every domain. Each AgentDR event reuses an OCSF class and carries the
+AI-specific semantic in `ai_operation`: inference (API Activity 6003),
+agent_action (agent_activity 9001, proposed), tool_execution (6003),
+mcp_operation (6003), prompt_injection (Detection Finding 2004),
+data_exfiltration (2004), permission_escalation (2004),
+compliance_violation (Compliance Finding 2003), guardrail (2004), and
+cost_anomaly (2004). Control-plane agent and delegation lifecycle uses
+the proposed OCSF Category 9 (issue #1640). Each event carries an
+OpenTelemetry trace_id and span_id, so multi-step agent activity
+reconstructs end-to-end.
 
 ### Tier 2 — actually deployable
 
@@ -151,7 +159,8 @@ by trace_id.
 This is the line between an observability tool and an EDR. AgentDR
 ships a **policy-as-code** engine: Sigma/Falco-shaped YAML that loads
 at startup, runs against every event the engine sees, and emits OCSF
-Category 7 Compliance Violation events on matches. The same engine
+Compliance Finding events (class 2003, `ai_operation=compliance_violation`)
+on matches. The same engine
 backs an inline blocking **HTTP CONNECT proxy** that sits on a loopback
 port. Configure your coding agents to use it as `HTTPS_PROXY`, declare a
 policy like:
@@ -169,11 +178,12 @@ policy like:
 ```
 
 …and the next time *any* agent egress matches, the proxy returns 403,
-the event ships with `class_uid=7008` and `status_id=BLOCKED`, and
-your SOC sees the policy ID and the source event in one record. We
-also detect OpenTelemetry `gen_ai.approval.*` attributes and emit
-Permission Escalation events whenever a human approves or denies an
-in-agent tool call.
+the event ships with `class_uid=2003` (`ai_operation=compliance_violation`)
+and `status_id=BLOCKED`, and your SOC sees the policy ID and the source
+event in one record. We also detect OpenTelemetry `gen_ai.approval.*`
+attributes and emit permission-escalation findings (Detection Finding
+2004, `ai_operation=permission_escalation`) whenever a human approves or
+denies an in-agent tool call.
 
 ### Tier 6 — the things everyone else skips
 
@@ -183,7 +193,8 @@ in-agent tool call.
   sidecar and ETW provider integration, with a fallback path that
   consumes those events through the syslog exporter.
 * **Shell / TTY capture** via `adr-agent shell wrap` — every agent
-  shell-exec becomes a class_uid 7003 event with stdin asymmetry
+  shell-exec becomes an API Activity 6003 event
+  (`ai_operation=tool_execution`) with stdin asymmetry
   (input=medium risk; output=low).
 * **Browser CDP attach** for Chrome / Edge running with
   `--remote-debugging-port=9222` — captures every page open,
@@ -199,15 +210,17 @@ in-agent tool call.
 A Claude Code session that drifts into a credential read produces, in
 order:
 
-1. `gen_ai.inference` (class 7001) when the model is consulted
-2. `gen_ai.tool` (class 7003) when Claude calls its `shell` tool
-3. `shell_input` and `shell_stdout` (class 7003) from
+1. `gen_ai.inference` (API Activity 6003, ai_operation=inference) when
+   the model is consulted
+2. `gen_ai.tool` (6003, tool_execution) when Claude calls its `shell`
+   tool
+3. `shell_input` and `shell_stdout` (6003, tool_execution) from
    `adr-agent shell wrap`
 4. `file_read` from the file monitor
-5. `alert_credential_access` (class 7006) from the detector — *with*
-   the list of candidate agent processes
-6. `proxy_block` (class 7008) when Claude's next request to
-   `api.openai.com` hits an allow-list-deny rule
+5. `alert_credential_access` (Detection Finding 2004, data_exfiltration)
+   from the detector — *with* the list of candidate agent processes
+6. `proxy_block` (Compliance Finding 2003, compliance_violation) when
+   Claude's next request to `api.openai.com` hits an allow-list-deny rule
 
 All six events share a trace_id, all six show up in the Sessions view,
 all six ship to your SIEM with the right OCSF shape, all six count
@@ -218,13 +231,17 @@ That's the difference between *seeing* and *responding*.
 ## What we owe the standards
 
 AgentDR is the reference implementation of the [CoSAI AI Telemetry
-Framework](https://github.com/girdav01/aitf). Every event is OCSF
-Category 7. Every detection carries an OWASP LLM Top-10 mapping and a
-NIST AI-RMF reference. We didn't invent a schema. We followed the open
-ones, because operators who deploy us today shouldn't have to re-parse
-their telemetry the next time the industry consolidates.
+Framework](https://github.com/girdav01/aitf). Every event reuses a
+standard OCSF class enriched with an AITF `ai_operation` profile — we
+follow OCSF's own principle of reusing classes rather than minting
+bespoke AI event classes; control-plane agent and delegation lifecycle
+uses the proposed OCSF Category 9 (issue #1640). Every detection carries
+an OWASP LLM Top-10 mapping and a NIST AI-RMF reference. We didn't invent
+a schema. We followed the open ones, because operators who deploy us
+today shouldn't have to re-parse their telemetry the next time the
+industry consolidates.
 
-If you're working on OCSF Category 7, MITRE ATLAS, OWASP LLM Top-10, or
+If you're working on OCSF, MITRE ATLAS, OWASP LLM Top-10, or
 OpenTelemetry `gen_ai`, we'd like your review.
 
 ## What's next
@@ -268,4 +285,4 @@ If that resonates, we'd love your help.
 **Get started:** [`docs/test-plans/`](../test-plans/) ·
 **Source:** github.com/girdav01/agentdr ·
 **Standards:** [CoSAI AITF](https://github.com/girdav01/aitf), OCSF
-Category 7, OpenTelemetry `gen_ai.*`.
+(Class-Reuse Model + `ai_operation` profile), OpenTelemetry `gen_ai.*`.

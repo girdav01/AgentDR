@@ -77,7 +77,7 @@ export default function LoginPage() {
             <Image src="/cosai-logo.png" alt="CoSAI — Coalition for Secure AI" width={200} height={82} className="h-14 w-auto dark:brightness-0 dark:invert" priority />
           </div>
           <h1 className="text-3xl font-display font-bold tracking-tight">Agent Detection & Response</h1>
-          <p className="text-muted-foreground mt-2">CoSAI Telemetry Framework — OCSF Category 7</p>
+          <p className="text-muted-foreground mt-2">CoSAI Telemetry Framework — AITF OCSF Class-Reuse</p>
         </div>
 
         <div className="bg-card rounded-xl p-6 shadow-lg border border-border">

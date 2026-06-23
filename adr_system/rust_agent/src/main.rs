@@ -3,7 +3,7 @@
 //! Rust implementation of the CoSAI ADR agent. Monitors processes, files, and
 //! network connections for AI agent activity, ingests OpenTelemetry signals
 //! from local AI runtimes (Claude Code, Codex CLI, Cursor, Aider), inventories
-//! and wraps MCP servers, and emits OCSF Category 7 events.
+//! and wraps MCP servers, and emits AITF OCSF Class-Reuse events.
 
 mod agents;
 mod config;
@@ -167,7 +167,7 @@ enum DiscoveryCmd {
 
 #[derive(Subcommand, Debug)]
 enum ShellCmd {
-    /// Wrap a command, logging stdin/stdout/stderr as class_uid=7003 events.
+    /// Wrap a command, logging stdin/stdout/stderr as ai_operation=tool_execution (API Activity 6003) events.
     Wrap {
         /// Logical session name to record in events.
         #[arg(long)]
@@ -450,7 +450,7 @@ async fn main() {
                 detection_rules = 20,
                 otlp_enabled = cfg.otlp.enabled,
                 mcp_inventory_on_start = cfg.mcp.inventory_on_start,
-                "CoSAI ADR Agent v{} (Rust) — CoSAI OCSF Category 7",
+                "CoSAI ADR Agent v{} (Rust) — AITF OCSF Class-Reuse",
                 env!("CARGO_PKG_VERSION"),
             );
 

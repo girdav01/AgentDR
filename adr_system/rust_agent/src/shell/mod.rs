@@ -3,7 +3,7 @@
 //! `adr-agent shell wrap -- <cmd>` re-execs a command (typically a shell
 //! or a non-interactive script) with stdin / stdout / stderr piped
 //! through the agent. Each input line and each output line is emitted as
-//! a class_uid 7003 (Tool Execution) event so SOC can audit *what an
+//! an API Activity (OCSF 6003, ai_operation=tool_execution) event so SOC can audit *what an
 //! agent shell-execed* and *what came back* — not merely that a process
 //! ran. Designed to be invoked from inside an AI agent's shell-tool
 //! handler:
@@ -43,8 +43,7 @@ pub async fn run(session_name: &str, cmd: &[String], log_path: &Path) -> Result<
             json!({ "session": session_name, "cmd": cmd }),
             "low",
         );
-        ev.class_uid = Some(CLASS_TOOL_EXECUTION);
-        ev.type_uid = Some(CLASS_TOOL_EXECUTION * 100 + ACTIVITY_CREATE);
+        ev.set_op(AiOperation::ToolExecution, ACTIVITY_CREATE);
         ev.activity_id = Some(ACTIVITY_CREATE);
         ev.status_id = Some(STATUS_SUCCESS);
         ev.tool_name = Some("shell".into());
@@ -126,8 +125,7 @@ pub async fn run(session_name: &str, cmd: &[String], log_path: &Path) -> Result<
             json!({ "session": session_name, "exit_code": code }),
             "low",
         );
-        ev.class_uid = Some(CLASS_TOOL_EXECUTION);
-        ev.type_uid = Some(CLASS_TOOL_EXECUTION * 100 + ACTIVITY_DELETE);
+        ev.set_op(AiOperation::ToolExecution, ACTIVITY_DELETE);
         ev.activity_id = Some(ACTIVITY_DELETE);
         ev.status_id = if code == 0 { Some(STATUS_SUCCESS) } else { Some(STATUS_FAILURE) };
         ev.tool_name = Some("shell".into());
@@ -152,8 +150,7 @@ fn emit_io(log: &EventLog, session: &str, stream: &str, raw: &str) {
         json!({ "session": session, "stream": stream, "line": trimmed, "truncated": raw.len() > 4096 }),
         risk,
     );
-    ev.class_uid = Some(CLASS_TOOL_EXECUTION);
-    ev.type_uid = Some(CLASS_TOOL_EXECUTION * 100 + ACTIVITY_EXECUTE);
+    ev.set_op(AiOperation::ToolExecution, ACTIVITY_EXECUTE);
     ev.activity_id = Some(ACTIVITY_EXECUTE);
     ev.status_id = Some(STATUS_SUCCESS);
     ev.tool_name = Some("shell".into());

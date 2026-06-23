@@ -7,7 +7,7 @@
 //!   2. A managed block in `~/.aider.conf.yml` that turns on Aider's
 //!      built-in logging hooks (`chat-history-file`, `llm-history-file`)
 //!      pointing at AgentDR's runtime log directory so the agent's file
-//!      monitor can ingest them as class_uid=7001 events.
+//!      monitor can ingest them as ai_operation=inference (API Activity 6003) events.
 
 use super::common::*;
 use serde_json::{json, Value};

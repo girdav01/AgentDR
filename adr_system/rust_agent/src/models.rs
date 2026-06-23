@@ -1,4 +1,12 @@
-//! CoSAI OCSF Category 7 constants, EventRecord, agent signatures, detection rules.
+//! AITF OCSF Class-Reuse constants, the `ai_operation` profile, `EventRecord`,
+//! agent signatures, and detection rules.
+//!
+//! AITF (the CoSAI AI Telemetry Framework) **dropped its bespoke "Category 7"**
+//! and now maps every AI event onto an *existing* OCSF class enriched with an
+//! `ai_operation` profile (per the OCSF principle of reusing classes rather
+//! than minting bespoke AI event classes). Data-plane events flow through the
+//! standard categories (2–6); only the control-plane agent/delegation lifecycle
+//! uses the proposed Category 9 classes (OCSF issue #1640, provisional).
 //!
 //! Detection signatures, AI-endpoint rules, and messaging-endpoint rules are
 //! loaded at runtime from the `cosai-community/rules/` JSON files so they can
@@ -11,17 +19,88 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 use uuid::Uuid;
 
-// ── CoSAI OCSF Category 7 Event Classes ──
-pub const CLASS_LLM_INFERENCE: u32 = 7001;
-pub const CLASS_AGENT_ACTION: u32 = 7002;
-pub const CLASS_TOOL_EXECUTION: u32 = 7003;
-pub const CLASS_MCP_OPERATION: u32 = 7004;
-pub const CLASS_PROMPT_INJECTION: u32 = 7005;
-pub const CLASS_DATA_EXFILTRATION: u32 = 7006;
-pub const CLASS_PERMISSION_ESCALATION: u32 = 7007;
-pub const CLASS_COMPLIANCE_VIOLATION: u32 = 7008;
-pub const CLASS_GUARDRAIL_EVENT: u32 = 7009;
-pub const CLASS_COST_ANOMALY: u32 = 7010;
+// ── OCSF reused class_uids (AITF Class-Reuse Model) ──
+// Data-plane events reuse existing OCSF classes (categories 2–6).
+pub const OCSF_APP_LIFECYCLE: u32 = 6002; // Application Lifecycle — model operations
+pub const OCSF_API_ACTIVITY: u32 = 6003; // API Activity — inference, tool & MCP calls
+pub const OCSF_DATASTORE_ACTIVITY: u32 = 6005; // Datastore Activity — RAG / vector retrieval
+pub const OCSF_INVENTORY_INFO: u32 = 5001; // Inventory Info — asset inventory
+pub const OCSF_AUTHENTICATION: u32 = 3002; // Authentication — identity / delegation auth
+pub const OCSF_DETECTION_FINDING: u32 = 2004; // Detection Finding — security findings
+pub const OCSF_COMPLIANCE_FINDING: u32 = 2003; // Compliance Finding — governance
+pub const OCSF_VULNERABILITY_FINDING: u32 = 2002; // Vulnerability Finding — supply chain
+// Control-plane lifecycle uses the proposed Category 9 (OCSF #1640, provisional).
+pub const OCSF_AGENT_ACTIVITY: u32 = 9001; // agent_activity (proposed)
+pub const OCSF_DELEGATION_ACTIVITY: u32 = 9002; // delegation_activity (proposed)
+
+/// The AITF **`ai_operation` profile**: the AI-specific semantic carried on a
+/// reused OCSF class. Because AITF collapses many AI operations onto a handful
+/// of OCSF classes (e.g. inference, tool and MCP calls all map to API Activity
+/// `6003`), this enum preserves the fine-grained operation while
+/// [`ocsf_class_uid`](AiOperation::ocsf_class_uid) yields the canonical class.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AiOperation {
+    Inference,
+    AgentAction,
+    ToolExecution,
+    McpOperation,
+    DataRetrieval,
+    ModelOps,
+    PromptInjection,
+    DataExfiltration,
+    PermissionEscalation,
+    GuardrailEvent,
+    CostAnomaly,
+    ComplianceViolation,
+    SupplyChain,
+    Identity,
+    AssetInventory,
+    Delegation,
+}
+
+impl AiOperation {
+    /// The `ai_operation` profile string emitted alongside the OCSF class.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Inference => "inference",
+            Self::AgentAction => "agent_action",
+            Self::ToolExecution => "tool_execution",
+            Self::McpOperation => "mcp_operation",
+            Self::DataRetrieval => "data_retrieval",
+            Self::ModelOps => "model_ops",
+            Self::PromptInjection => "prompt_injection",
+            Self::DataExfiltration => "data_exfiltration",
+            Self::PermissionEscalation => "permission_escalation",
+            Self::GuardrailEvent => "guardrail",
+            Self::CostAnomaly => "cost_anomaly",
+            Self::ComplianceViolation => "compliance_violation",
+            Self::SupplyChain => "supply_chain",
+            Self::Identity => "identity",
+            Self::AssetInventory => "asset_inventory",
+            Self::Delegation => "delegation",
+        }
+    }
+
+    /// The reused OCSF `class_uid` this AI operation maps onto.
+    pub fn ocsf_class_uid(&self) -> u32 {
+        match self {
+            Self::Inference | Self::ToolExecution | Self::McpOperation => OCSF_API_ACTIVITY,
+            Self::DataRetrieval => OCSF_DATASTORE_ACTIVITY,
+            Self::ModelOps => OCSF_APP_LIFECYCLE,
+            Self::AgentAction => OCSF_AGENT_ACTIVITY,
+            Self::Delegation => OCSF_DELEGATION_ACTIVITY,
+            Self::PromptInjection
+            | Self::DataExfiltration
+            | Self::PermissionEscalation
+            | Self::GuardrailEvent
+            | Self::CostAnomaly => OCSF_DETECTION_FINDING,
+            Self::ComplianceViolation => OCSF_COMPLIANCE_FINDING,
+            Self::SupplyChain => OCSF_VULNERABILITY_FINDING,
+            Self::Identity => OCSF_AUTHENTICATION,
+            Self::AssetInventory => OCSF_INVENTORY_INFO,
+        }
+    }
+}
 
 // ── Activity IDs ──
 pub const ACTIVITY_CREATE: u32 = 1;
@@ -280,31 +359,37 @@ pub fn is_skill_path(filepath: &str) -> bool {
 pub struct DetectionRule {
     pub name: &'static str,
     pub owasp: &'static str,
-    pub class_uid: u32,
+    /// AITF `ai_operation` profile for the emitted finding. Its
+    /// [`ocsf_class_uid`](AiOperation::ocsf_class_uid) yields the reused OCSF
+    /// finding class (Detection `2004`, Compliance `2003`, Vulnerability `2002`).
+    pub op: AiOperation,
 }
 
 pub fn detection_rules() -> HashMap<&'static str, DetectionRule> {
+    use AiOperation::*;
     let mut m = HashMap::new();
-    m.insert("AITF-DET-001", DetectionRule { name: "Prompt Injection Detected", owasp: "LLM01", class_uid: 7005 });
-    m.insert("AITF-DET-002", DetectionRule { name: "Sensitive Data in Output", owasp: "LLM02", class_uid: 7006 });
-    m.insert("AITF-DET-003", DetectionRule { name: "Excessive Token Usage", owasp: "LLM04", class_uid: 7010 });
-    m.insert("AITF-DET-004", DetectionRule { name: "Unauthorized Tool Execution", owasp: "LLM05", class_uid: 7003 });
-    m.insert("AITF-DET-005", DetectionRule { name: "Excessive Agency / Autonomy", owasp: "LLM08", class_uid: 7002 });
-    m.insert("AITF-DET-006", DetectionRule { name: "Supply Chain Anomaly", owasp: "LLM03", class_uid: 7004 });
-    m.insert("AITF-DET-007", DetectionRule { name: "Insecure Output Handling", owasp: "LLM02", class_uid: 7009 });
-    m.insert("AITF-DET-008", DetectionRule { name: "Model Denial of Service", owasp: "LLM04", class_uid: 7010 });
-    m.insert("AITF-DET-009", DetectionRule { name: "Rapid File Modifications", owasp: "LLM08", class_uid: 7002 });
-    m.insert("AITF-DET-010", DetectionRule { name: "Bulk Data Deletion", owasp: "LLM06", class_uid: 7006 });
-    m.insert("AITF-DET-011", DetectionRule { name: "Permission Boundary Violation", owasp: "LLM05", class_uid: 7007 });
-    m.insert("AITF-DET-012", DetectionRule { name: "Unusual API Volume", owasp: "LLM04", class_uid: 7010 });
-    m.insert("AITF-DET-013", DetectionRule { name: "MCP Server Abuse", owasp: "LLM05", class_uid: 7004 });
-    m.insert("AITF-DET-014", DetectionRule { name: "Compliance Drift", owasp: "LLM09", class_uid: 7008 });
-    m.insert("AITF-DET-015", DetectionRule { name: "Malicious Skill/Plugin Loaded", owasp: "LLM03", class_uid: 7004 });
-    m.insert("AITF-DET-016", DetectionRule { name: "Unauthorized Messaging Channel Access", owasp: "LLM05", class_uid: 7007 });
-    m.insert("AITF-DET-017", DetectionRule { name: "Shell Command Execution by Agent", owasp: "LLM08", class_uid: 7003 });
-    m.insert("AITF-DET-018", DetectionRule { name: "Agent Credential / Secret Access", owasp: "LLM06", class_uid: 7006 });
-    m.insert("AITF-DET-019", DetectionRule { name: "Cross-Platform Data Relay", owasp: "LLM02", class_uid: 7006 });
-    m.insert("AITF-DET-020", DetectionRule { name: "Unvetted Skill Installation", owasp: "LLM03", class_uid: 7004 });
+    // IDs 001–014 are the canonical AITF built-in rules; 015–020 are AgentDR
+    // endpoint-specific extensions. Names mirror cosai-community/policies/detection-rules.json.
+    m.insert("AITF-DET-001", DetectionRule { name: "Unusual Token Usage",            owasp: "LLM01", op: CostAnomaly });
+    m.insert("AITF-DET-002", DetectionRule { name: "Model Switching Attack",         owasp: "LLM02", op: PromptInjection });
+    m.insert("AITF-DET-003", DetectionRule { name: "Prompt Injection Attempt",       owasp: "LLM04", op: PromptInjection });
+    m.insert("AITF-DET-004", DetectionRule { name: "Excessive Cost Spike",           owasp: "LLM05", op: CostAnomaly });
+    m.insert("AITF-DET-005", DetectionRule { name: "Agent Loop Detection",           owasp: "LLM08", op: GuardrailEvent });
+    m.insert("AITF-DET-006", DetectionRule { name: "Unauthorized Agent Delegation",  owasp: "LLM03", op: PermissionEscalation });
+    m.insert("AITF-DET-007", DetectionRule { name: "Agent Session Hijack",           owasp: "LLM02", op: PermissionEscalation });
+    m.insert("AITF-DET-008", DetectionRule { name: "Excessive Tool Calls",           owasp: "LLM04", op: GuardrailEvent });
+    m.insert("AITF-DET-009", DetectionRule { name: "MCP Server Impersonation",       owasp: "LLM08", op: PermissionEscalation });
+    m.insert("AITF-DET-010", DetectionRule { name: "Tool Permission Bypass",         owasp: "LLM06", op: PermissionEscalation });
+    m.insert("AITF-DET-011", DetectionRule { name: "Data Exfiltration via Tools",    owasp: "LLM05", op: DataExfiltration });
+    m.insert("AITF-DET-012", DetectionRule { name: "PII Exfiltration Chain",         owasp: "LLM04", op: DataExfiltration });
+    m.insert("AITF-DET-013", DetectionRule { name: "Jailbreak Escalation",           owasp: "LLM05", op: GuardrailEvent });
+    m.insert("AITF-DET-014", DetectionRule { name: "Supply Chain Compromise",        owasp: "LLM09", op: SupplyChain });
+    m.insert("AITF-DET-015", DetectionRule { name: "Malicious Skill/Plugin Loaded",  owasp: "LLM03", op: SupplyChain });
+    m.insert("AITF-DET-016", DetectionRule { name: "Unauthorized Messaging Channel", owasp: "LLM05", op: DataExfiltration });
+    m.insert("AITF-DET-017", DetectionRule { name: "Shell Command Execution",        owasp: "LLM08", op: PermissionEscalation });
+    m.insert("AITF-DET-018", DetectionRule { name: "Credential / Secret Access",     owasp: "LLM06", op: DataExfiltration });
+    m.insert("AITF-DET-019", DetectionRule { name: "Cross-Platform Data Relay",      owasp: "LLM02", op: DataExfiltration });
+    m.insert("AITF-DET-020", DetectionRule { name: "Unvetted Skill Installation",    owasp: "LLM03", op: SupplyChain });
     m
 }
 
@@ -337,9 +422,13 @@ pub struct EventRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
 
-    // CoSAI OCSF Category 7 fields
+    // AITF OCSF Class-Reuse fields
     #[serde(skip_serializing_if = "Option::is_none")]
     pub class_uid: Option<u32>,
+    /// AITF `ai_operation` profile — the AI-specific semantic carried on the
+    /// reused OCSF class (e.g. `inference`, `tool_execution`, `mcp_operation`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ai_operation: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub type_uid: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -387,6 +476,7 @@ impl EventRecord {
             agent_detected: None,
             source: None,
             class_uid: None,
+            ai_operation: None,
             type_uid: None,
             activity_id: None,
             severity_id: Some(severity_id),
@@ -406,5 +496,15 @@ impl EventRecord {
             trace_id: gen_trace_id(),
             span_id: gen_span_id(),
         }
+    }
+
+    /// Apply the AITF `ai_operation` profile: set the reused OCSF `class_uid`,
+    /// the derived `type_uid` (`class_uid * 100 + activity_id`, per OCSF), and
+    /// the `ai_operation` string in one call.
+    pub fn set_op(&mut self, op: AiOperation, activity_id: u32) {
+        let class_uid = op.ocsf_class_uid();
+        self.class_uid = Some(class_uid);
+        self.type_uid = Some(class_uid * 100 + activity_id);
+        self.ai_operation = Some(op.as_str().to_string());
     }
 }

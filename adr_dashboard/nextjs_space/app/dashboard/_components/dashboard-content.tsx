@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { OCSF_CLASSES, getClassLabel, getClassIcon, getClassColor, AGENT_CATEGORIES, KNOWN_AGENTS } from '@/lib/aitf';
+import { getOpLabel, getOpIcon, getOpColor, AGENT_CATEGORIES, KNOWN_AGENTS } from '@/lib/aitf';
 
 function CountUp({ target, duration = 1500 }: { target: number; duration?: number }) {
   const [count, setCount] = useState(0);
@@ -37,11 +37,11 @@ function RiskBadge({ level }: { level: string }) {
   );
 }
 
-function OCSFClassBadge({ classUid }: { classUid: number | null }) {
-  if (!classUid) return null;
+function AiOperationBadge({ aiOperation }: { aiOperation: string | null }) {
+  if (!aiOperation) return null;
   return (
-    <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-primary/10 ${getClassColor(classUid)}`}>
-      {classUid}
+    <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-primary/10 ${getOpColor(aiOperation)}`}>
+      {getOpIcon(aiOperation)} {getOpLabel(aiOperation)}
     </span>
   );
 }
@@ -53,9 +53,9 @@ export function DashboardContent() {
 
   const statCards = [
     { label: 'Total Events', value: stats?.totalEvents ?? 0, icon: Activity, color: 'text-blue-400', bg: 'bg-blue-500/10' },
-    { label: 'Security Findings', value: (stats?.eventsByClass ?? []).find((c: any) => c.classUid === 7005)?.count ?? 0, icon: Shield, color: 'text-red-400', bg: 'bg-red-500/10' },
-    { label: 'Model Inferences', value: (stats?.eventsByClass ?? []).find((c: any) => c.classUid === 7001)?.count ?? 0, icon: Brain, color: 'text-blue-400', bg: 'bg-blue-500/10' },
-    { label: 'Agent Sessions', value: (stats?.eventsByClass ?? []).find((c: any) => c.classUid === 7002)?.count ?? 0, icon: Cpu, color: 'text-purple-400', bg: 'bg-purple-500/10' },
+    { label: 'Security Findings', value: (stats?.eventsByClass ?? []).find((c: any) => c.classUid === 2004)?.count ?? 0, icon: Shield, color: 'text-red-400', bg: 'bg-red-500/10' },
+    { label: 'Model Inferences', value: (stats?.eventsByOperation ?? []).find((o: any) => o.aiOperation === 'inference')?.count ?? 0, icon: Brain, color: 'text-blue-400', bg: 'bg-blue-500/10' },
+    { label: 'Agent Sessions', value: (stats?.eventsByOperation ?? []).find((o: any) => o.aiOperation === 'agent_action')?.count ?? 0, icon: Cpu, color: 'text-purple-400', bg: 'bg-purple-500/10' },
     { label: 'Active Alerts', value: stats?.unresolvedAlerts ?? 0, icon: AlertTriangle, color: 'text-yellow-400', bg: 'bg-yellow-500/10' },
     { label: 'AI Providers', value: stats?.eventsByProvider?.length ?? 0, icon: Layers, color: 'text-cyan-400', bg: 'bg-cyan-500/10' },
   ];
@@ -69,7 +69,7 @@ export function DashboardContent() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl md:text-3xl font-display font-bold tracking-tight">CoSAI Security Overview</h1>
-          <p className="text-sm text-muted-foreground mt-1">CoSAI Telemetry Framework — OCSF Category 7 Monitoring</p>
+          <p className="text-sm text-muted-foreground mt-1">CoSAI Telemetry Framework — AITF AI-Operation Monitoring</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="px-2 py-1 rounded bg-primary/10 text-primary text-[10px] font-mono">OCSF v1.1.0</span>
@@ -110,23 +110,23 @@ export function DashboardContent() {
       >
         <h2 className="font-semibold flex items-center gap-2 mb-4">
           <Eye className="w-4 h-4 text-primary" />
-          OCSF Category 7 — AI Event Classes
+          AITF — AI Operations
         </h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
-          {(stats?.eventsByClass ?? []).map((cls: any) => {
-            const maxCount = stats?.eventsByClass?.[0]?.count ?? 1;
+          {(stats?.eventsByOperation ?? []).map((op: any) => {
+            const maxCount = stats?.eventsByOperation?.[0]?.count ?? 1;
             return (
-              <div key={cls.classUid} className="bg-background/50 rounded-lg p-3 border border-border/50">
+              <div key={op.aiOperation} className="bg-background/50 rounded-lg p-3 border border-border/50">
                 <div className="flex items-center gap-1.5 mb-1">
-                  <span className="text-sm">{getClassIcon(cls.classUid)}</span>
-                  <span className={`text-xs font-mono font-bold ${getClassColor(cls.classUid)}`}>{cls.classUid}</span>
+                  <span className="text-sm">{getOpIcon(op.aiOperation)}</span>
+                  <span className={`text-xs font-mono font-bold ${getOpColor(op.aiOperation)}`}>{op.classUid}</span>
                 </div>
-                <p className="text-lg font-bold font-mono">{cls.count}</p>
-                <p className="text-[10px] text-muted-foreground leading-tight">{cls.label}</p>
+                <p className="text-lg font-bold font-mono">{op.count}</p>
+                <p className="text-[10px] text-muted-foreground leading-tight">{op.label ?? getOpLabel(op.aiOperation)}</p>
                 <div className="h-1 bg-muted rounded-full overflow-hidden mt-2">
                   <div
                     className="h-full bg-primary/60 rounded-full"
-                    style={{ width: `${(cls.count / maxCount) * 100}%` }}
+                    style={{ width: `${(op.count / maxCount) * 100}%` }}
                   />
                 </div>
               </div>
@@ -199,7 +199,7 @@ export function DashboardContent() {
               <div key={event?.id ?? i} className="px-4 py-3 hover:bg-accent/30 transition-colors">
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
-                    <OCSFClassBadge classUid={event?.classUid} />
+                    <AiOperationBadge aiOperation={event?.aiOperation} />
                     <span className="font-mono text-xs font-medium text-foreground">{event?.message ? event.message.slice(0, 60) : event?.eventType ?? 'unknown'}</span>
                   </div>
                   <RiskBadge level={event?.riskLevel ?? 'low'} />

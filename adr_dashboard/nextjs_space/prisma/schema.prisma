@@ -45,9 +45,10 @@ model Event {
   source        String?
   tags          String?  @db.Text
   orgId         String?       // Scope to organization (null = personal)
-  // AITF OCSF Category 7 fields
-  classUid      Int?          // OCSF class_uid (7001-7010)
-  typeUid       Int?          // OCSF type_uid (e.g., 700101)
+  // AITF OCSF Class-Reuse fields
+  classUid      Int?          // Reused OCSF class_uid (e.g., 6003, 2004, 9001)
+  aiOperation   String?       // AITF ai_operation profile (e.g., inference, tool_execution)
+  typeUid       Int?          // OCSF type_uid (classUid * 100 + activityId)
   activityId    Int?          // OCSF activity_id
   severityId    Int?          // OCSF severity_id (0-6)
   statusId      Int?          // OCSF status_id
@@ -76,6 +77,7 @@ model Event {
   @@index([riskLevel])
   @@index([agentDetected])
   @@index([classUid])
+  @@index([aiOperation])
   @@index([provider])
   @@index([orgId])
   @@index([traceId])

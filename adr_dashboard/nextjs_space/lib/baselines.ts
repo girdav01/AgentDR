@@ -11,9 +11,9 @@
  * Metrics (per 1-hour window):
  *   - tokens_per_hour          : sum of token_usage.total seen for that bucket
  *   - files_touched_per_hour   : distinct file paths under Event.details.path
- *   - mcp_tool_diversity       : distinct MCP method names (tool_name w/ class_uid=7004)
+ *   - mcp_tool_diversity       : distinct MCP method names (tool_name w/ ai_operation=mcp_operation)
  *   - offhours_share           : fraction of events outside 08:00–20:00 local
- *   - api_call_rate            : count of class_uid=7001 events
+ *   - api_call_rate            : count of ai_operation=inference events
  *
  * Baselines store mean / stdev / p50 / p95 / p99 so the z-score returned by
  * scoreEvent() is stable and doesn't require re-scanning the whole history
@@ -43,6 +43,7 @@ const BUCKET_MS = 60 * 60 * 1000;
 interface EventLike {
   timestamp: Date;
   classUid: number | null;
+  aiOperation: string | null;
   toolName: string | null;
   mcpServer: string | null;
   tokenUsage: string | null;       // JSON
@@ -89,7 +90,7 @@ function bucketize(events: EventLike[]): Map<string, Map<number, Bucket>> {
     const localHour = new Date(ts).getHours();
     if (localHour < 8 || localHour >= 20) b.offhours += 1;
 
-    if (ev.classUid === 7001) b.api += 1;
+    if (ev.aiOperation === 'inference') b.api += 1;
 
     if (ev.tokenUsage) {
       try {
@@ -103,7 +104,7 @@ function bucketize(events: EventLike[]): Map<string, Map<number, Bucket>> {
       const p = d?.path ?? d?.source_path;
       if (typeof p === 'string') b.files.add(p);
     } catch { /* ignore */ }
-    if (ev.classUid === 7004 && ev.toolName) b.mcpTools.add(ev.toolName);
+    if (ev.aiOperation === 'mcp_operation' && ev.toolName) b.mcpTools.add(ev.toolName);
   }
   return out;
 }
@@ -135,7 +136,7 @@ export async function recomputeBaselines(opts: { windowDays?: number; orgId?: st
       ...(opts.orgId ? { orgId: opts.orgId } : {}),
     },
     select: {
-      timestamp: true, classUid: true, toolName: true, mcpServer: true,
+      timestamp: true, classUid: true, aiOperation: true, toolName: true, mcpServer: true,
       tokenUsage: true, details: true, actor: true,
       hostName: true, userName: true, agentName: true,
     },

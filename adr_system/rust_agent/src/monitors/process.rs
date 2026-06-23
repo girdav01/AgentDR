@@ -59,8 +59,7 @@ impl ProcessMonitor {
                         risk,
                     );
                     event.source = Some("process_monitor".into());
-                    event.class_uid = Some(CLASS_AGENT_ACTION);
-                    event.type_uid = Some(CLASS_AGENT_ACTION * 100 + ACTIVITY_CREATE);
+                    event.set_op(AiOperation::AgentAction, ACTIVITY_CREATE);
                     event.activity_id = Some(ACTIVITY_CREATE);
                     event.status_id = Some(STATUS_SUCCESS);
                     event.message = Some(format!("Process started: {}", name));
@@ -84,8 +83,7 @@ impl ProcessMonitor {
                     "low",
                 );
                 event.source = Some("process_monitor".into());
-                event.class_uid = Some(CLASS_AGENT_ACTION);
-                event.type_uid = Some(CLASS_AGENT_ACTION * 100 + ACTIVITY_DELETE);
+                event.set_op(AiOperation::AgentAction, ACTIVITY_DELETE);
                 event.activity_id = Some(ACTIVITY_DELETE);
                 event.message = Some(format!("Process ended: PID {}", pid));
                 let _ = self.tx.send(event);

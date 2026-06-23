@@ -5,7 +5,7 @@ import { useFetch } from '@/hooks/use-fetch';
 import {
   Activity, Cpu, Globe, Layers, Server, ShieldAlert, Clock, AlertTriangle, Users,
 } from 'lucide-react';
-import { OCSF_CLASSES, getClassLabel } from '@/lib/aitf';
+import { getOpIcon } from '@/lib/aitf';
 
 interface SessionRow {
   traceId: string;
@@ -18,6 +18,7 @@ interface SessionRow {
   agents: string[];
   providers: string[];
   classes: number[];
+  operations: string[];
   multiHost: boolean;
   sampleMessage: string | null;
 }
@@ -119,7 +120,7 @@ export function SessionsContent() {
               <span className="flex items-center gap-1"><Users className="w-3 h-3" />{s.users.length || '—'} user</span>
               <span className="flex items-center gap-1"><Cpu className="w-3 h-3" />{s.agents.join(', ') || '—'}</span>
               <span className="flex items-center gap-1"><Layers className="w-3 h-3" />
-                {s.classes.map(c => OCSF_CLASSES[c]?.icon ?? c).join(' ')}
+                {(s.operations ?? []).map(op => getOpIcon(op)).join(' ')}
               </span>
             </div>
           </Link>

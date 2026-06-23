@@ -83,13 +83,13 @@ JSON
 
 **emits**:
 
-| class_uid | event_type | meaning |
-|---|---|---|
-| 7001 | `gen_ai.inference` | LLM call, token usage populated |
-| 7003 | `gen_ai.tool` | tool_name=read_file |
+| class_uid | ai_operation | event_type | meaning |
+|---|---|---|---|
+| 6003 | `inference` | `gen_ai.inference` | LLM call, token usage populated |
+| 6003 | `tool_execution` | `gen_ai.tool` | tool_name=read_file |
 
 ```bash
-tail -2 "$DEMO_ROOT/logs/events.jsonl" | jq '{class_uid, event_type, tool_name, token_usage}'
+tail -2 "$DEMO_ROOT/logs/events.jsonl" | jq '{class_uid, ai_operation, event_type, tool_name, token_usage}'
 ```
 
 ### STEP T1.4 — MCP server inventory
@@ -114,7 +114,7 @@ sleep 1
 echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"create_issue","arguments":{}}}' > /dev/tcp/...  # or pipe stdin
 ```
 
-**emits**: `class_uid=7004` events for every JSON-RPC message; `tool_name="tools/call"` carries risk=medium.
+**emits**: `class_uid=6003` (`ai_operation="mcp_operation"`) events for every JSON-RPC message; `tool_name="tools/call"` carries risk=medium.
 
 ---
 
@@ -170,7 +170,7 @@ kill -HUP $AGENT_PID || (kill $AGENT_PID; adr-agent --root "$DEMO_ROOT" start --
 Re-run STEP T1.3. Within ~5 seconds the syslog receiver shows:
 
 ```
-<109>1 2026-05-17T... laptop-david agentdr-demo 12345 - [aitf@53595 class_uid="7001" risk="low" provider="anthropic" model="claude-sonnet-4-5" trace_id="9b7f0c8d..."] {...full event JSON...}
+<109>1 2026-05-17T... laptop-david agentdr-demo 12345 - [aitf@53595 class_uid="6003" ai_operation="inference" risk="low" provider="anthropic" model="claude-sonnet-4-5" trace_id="9b7f0c8d..."] {...full event JSON...}
 ```
 
 > DEMO NARRATION: *"That structured-data block — `[aitf@53595 ...]` — is
@@ -254,7 +254,7 @@ curl -sv https://api.openai.com/v1/models --max-time 5 2>&1 | grep -E 'HTTP/|403
 tail -1 "$DEMO_ROOT/logs/events.jsonl" | jq '{class_uid, event_type, message, risk_level}'
 ```
 
-**emits**: `class_uid=7008`, `event_type="proxy_block"`, `risk_level="high"`.
+**emits**: `class_uid=2003`, `ai_operation="compliance_violation"`, `event_type="proxy_block"`, `risk_level="high"`.
 
 ### STEP T5.4 — allowed egress
 
@@ -262,7 +262,7 @@ tail -1 "$DEMO_ROOT/logs/events.jsonl" | jq '{class_uid, event_type, message, ri
 curl -s https://api.anthropic.com/v1/messages -o /dev/null -w 'HTTP %{http_code}\n' --max-time 5
 ```
 
-**emits**: `class_uid=7001`, `event_type="proxy_allow"`, `provider="anthropic"`.
+**emits**: `class_uid=6003`, `ai_operation="inference"`, `event_type="proxy_allow"`, `provider="anthropic"`.
 
 ### STEP T5.5 — approval-flow capture
 
@@ -281,7 +281,7 @@ curl -s -X POST -H 'Content-Type: application/json' http://127.0.0.1:4318/v1/tra
 JSON
 ```
 
-**emits**: `class_uid=7007`, `risk_level=high`, `status_id=3 (BLOCKED)`,
+**emits**: `class_uid=2004`, `ai_operation="permission_escalation"`, `risk_level=high`, `status_id=3 (BLOCKED)`,
 `details.decision="deny"`.
 
 ---

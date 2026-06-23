@@ -10,7 +10,7 @@ import {
   Copy, Check, BookOpen, Rocket, Users, Server,
   ChevronDown, ExternalLink
 } from 'lucide-react';
-import { OCSF_CLASSES, DETECTION_RULES, KNOWN_AGENTS, AGENT_CATEGORIES } from '@/lib/aitf';
+import { AI_OPERATIONS, DETECTION_RULES, KNOWN_AGENTS, AGENT_CATEGORIES } from '@/lib/aitf';
 
 /* ── Reusable components ── */
 
@@ -125,7 +125,7 @@ function ArchLayer({ title, items, color, icon: Icon }: {
 
 export default function ShowcaseContent() {
   const detectionRuleEntries = Object.entries(DETECTION_RULES);
-  const ocsfEntries = Object.entries(OCSF_CLASSES);
+  const aiOperationEntries = Object.entries(AI_OPERATIONS);
   const agentEntries = Object.entries(KNOWN_AGENTS);
 
   // Group agents by category
@@ -182,7 +182,7 @@ export default function ShowcaseContent() {
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-card border border-border mb-8 text-xs">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               <span className="text-muted-foreground">Built on</span>
-              <span className="font-semibold text-foreground">OCSF Category 7</span>
+              <span className="font-semibold text-foreground">AITF OCSF Class-Reuse</span>
               <span className="text-muted-foreground">• Coalition for Secure AI</span>
             </div>
 
@@ -252,10 +252,10 @@ export default function ShowcaseContent() {
                   <Zap className="w-4 h-4 text-primary" /> The Solution
                 </h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  CoSAI ADR introduces <strong className="text-foreground">OCSF Category 7</strong> — a purpose-built
-                  telemetry schema for AI workloads. 10 new event classes capture everything from model inference
-                  and agent actions to MCP operations, supply chain anomalies, and cost spikes. 20 detection rules
-                  map directly to the OWASP LLM Top 10.
+                  CoSAI ADR adopts the <strong className="text-foreground">AITF OCSF Class-Reuse Model</strong> — AI
+                  events reuse existing OCSF classes and carry an ai_operation profile. 16 AI operations capture
+                  everything from model inference and agent actions to MCP operations, supply chain anomalies, and
+                  cost spikes. 20 detection rules map directly to the OWASP LLM Top 10.
                 </p>
               </div>
             </div>
@@ -267,7 +267,7 @@ export default function ShowcaseContent() {
               <div className="space-y-3">
                 {[
                   'Real-time process, file & network monitoring for AI agents',
-                  'OCSF Category 7 structured telemetry output (JSONL)',
+                  'AITF OCSF class-reuse structured telemetry output (JSONL)',
                   '20 behavioral detection rules with configurable thresholds',
                   'OWASP LLM Top 10, NIST AI RMF, MITRE ATLAS mappings',
                   'Multi-agent tracking: coding, general-purpose, workflow',
@@ -298,7 +298,7 @@ export default function ShowcaseContent() {
           />
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            <FeatureCard icon={Eye} title="Live Telemetry Feed" description="Real-time streaming of OCSF Category 7 events. Auto-refresh every 5 seconds with risk-level color coding and OCSF class filtering." color="from-blue-500/20 to-blue-600/20" />
+            <FeatureCard icon={Eye} title="Live Telemetry Feed" description="Real-time streaming of AITF AI-operation events. Auto-refresh every 5 seconds with risk-level color coding and ai_operation filtering." color="from-blue-500/20 to-blue-600/20" />
             <FeatureCard icon={AlertTriangle} title="Detection Alerts" description="20 behavioral rules triggered by pattern matching, statistical analysis, and behavioral profiling. Each alert maps to OWASP LLM Top 10." color="from-red-500/20 to-red-600/20" />
             <FeatureCard icon={BarChart3} title="Analytics Dashboard" description="OCSF class distribution, provider/model breakdowns, top agent charts, timeline heatmaps, and detection rule frequency analysis." color="from-purple-500/20 to-purple-600/20" />
             <FeatureCard icon={Lock} title="Policy Engine" description="Enable/disable rules, set severity and action (alert/block/log), configure per-rule thresholds. Organization-scoped or global." color="from-orange-500/20 to-orange-600/20" />
@@ -369,45 +369,36 @@ export default function ShowcaseContent() {
       <section id="ocsf" className="py-20 md:py-28 bg-card/30 border-t border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading
-            badge="OCSF Category 7"
-            title="10 AI Telemetry Event Classes"
-            subtitle="Each event class captures a distinct dimension of AI agent behavior, extending the Open Cybersecurity Schema Framework."
+            badge="AITF OCSF Class-Reuse"
+            title="16 AI Operations over Reused OCSF Classes"
+            subtitle="AITF drops a bespoke category and instead reuses existing OCSF classes, carrying the AI-specific semantic in an ai_operation profile string."
           />
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-            {ocsfEntries.map(([uid, cls]) => (
-              <div key={uid} className="bg-card rounded-xl border border-border p-4 hover:border-primary/20 transition-colors">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {aiOperationEntries.map(([op, meta]) => (
+              <div key={op} className="bg-card rounded-xl border border-border p-4 hover:border-primary/20 transition-colors">
                 <div className="flex items-center gap-2 mb-3">
-                  <span className="text-xl">{cls.icon}</span>
-                  <span className="font-mono text-xs text-muted-foreground">{uid}</span>
+                  <span className="text-xl">{meta.icon}</span>
+                  <span className="font-mono text-xs text-muted-foreground">{op}</span>
                 </div>
-                <h4 className={`font-semibold text-sm ${cls.color}`}>{cls.label}</h4>
+                <h4 className={`font-semibold text-sm ${meta.color}`}>{meta.label}</h4>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {uid === '7001' && 'Model API calls, token usage, latency, cost tracking'}
-                  {uid === '7002' && 'Autonomous operations, delegation, loop detection'}
-                  {uid === '7003' && 'Tool/function calls, MCP operations, permissions'}
-                  {uid === '7004' && 'Data retrieval, RAG operations, context injection'}
-                  {uid === '7005' && 'Prompt injection, jailbreak, security findings'}
-                  {uid === '7006' && 'Data exfiltration, PII leakage, supply chain'}
-                  {uid === '7007' && 'Permission escalation, boundary violations'}
-                  {uid === '7008' && 'Compliance drift, regulatory framework checks'}
-                  {uid === '7009' && 'Guardrail triggers, safety filter activations'}
-                  {uid === '7010' && 'Cost anomalies, spending spikes, token abuse'}
+                  Reuses OCSF class <span className="font-mono">{meta.classUid}</span>
                 </p>
               </div>
             ))}
           </div>
 
-          {/* OCSF Event sample */}
+          {/* AITF Event sample */}
           <div className="mt-12 max-w-4xl mx-auto">
-            <h3 className="text-sm font-semibold mb-3 text-center">Sample OCSF Category 7 Event</h3>
+            <h3 className="text-sm font-semibold mb-3 text-center">Sample AITF Class-Reuse Event</h3>
             <CodeBlock lang="json" code={`{
-  "class_uid": 7001,
-  "class_name": "Model Inference",
-  "category_uid": 7,
-  "category_name": "AI & ML Telemetry",
+  "class_uid": 6003,
+  "class_name": "API Activity",
+  "profile": "ai_operation",
+  "ai_operation": "inference",
   "activity_id": 1,
-  "activity_name": "Inference Request",
+  "type_uid": 600301,
   "severity_id": 2,
   "time": "2026-05-01T12:34:56.789Z",
   "metadata": {
@@ -652,9 +643,9 @@ curl -X POST https://your-dashboard.example.com/api/sync \\
 
           <div className="space-y-3">
             <FaqItem q="What AI agents does CoSAI ADR monitor?" a="CoSAI ADR monitors 22 agents across three categories: coding assistants (Cursor, Claude Code, GitHub Copilot, Windsurf, Aider, Cline, Augment Code, Continue.dev), general-purpose agents (OpenClaw, AutoGPT, BabyAGI, SuperAGI, SmolAgents, and OpenClaw variants), and workflow orchestrators (LangChain, CrewAI, AutoGen, LlamaIndex). New agent signatures can be added by updating the agent models." />
-            <FaqItem q="What is OCSF Category 7?" a="OCSF (Open Cybersecurity Schema Framework) Category 7 is CoSAI's proposed extension for AI & ML Telemetry. It introduces 10 event classes (7001-7010) covering model inference, agent activity, tool execution, MCP operations, security findings, supply chain, governance, identity, model operations, and asset inventory. Each event follows the OCSF schema structure with standard metadata, severity, and observables." />
-            <FaqItem q="How does detection work?" a="The endpoint agent monitors three channels: processes (psutil/sysinfo), files (watchdog/notify), and network (packet inspection). Events are classified into OCSF classes, then run through 20 detection rules. Each rule uses pattern matching, statistical thresholds, or behavioral baselines. When a rule fires, an alert is created with the rule ID, severity, OWASP mapping, and affected agent." />
-            <FaqItem q="Python agent vs Rust agent?" a="Both agents produce identical OCSF Category 7 JSONL output and implement all 20 detection rules. The Python agent is easier to extend and debug (watchdog, psutil, mitmproxy). The Rust agent compiles to a 4.8 MB static binary using tokio, sysinfo, notify — ideal for production deployments where minimal resource footprint matters." />
+            <FaqItem q="How does AITF map AI events to OCSF?" a="AITF follows the OCSF Class-Reuse Model: instead of a bespoke category, each AI event reuses an existing OCSF class (e.g. 6003 API Activity, 6005 Datastore Activity, 2004 Detection Finding, 9001 Agent Activity) and carries the AI-specific semantic in an ai_operation profile string (inference, tool_execution, mcp_operation, data_retrieval, prompt_injection, supply_chain, and more). Each event follows the OCSF schema structure with standard metadata, severity, and observables." />
+            <FaqItem q="How does detection work?" a="The endpoint agent monitors three channels: processes (psutil/sysinfo), files (watchdog/notify), and network (packet inspection). Events are tagged with a reused OCSF class and an ai_operation profile, then run through 20 detection rules. Each rule uses pattern matching, statistical thresholds, or behavioral baselines. When a rule fires, an alert is created with the rule ID, severity, OWASP mapping, and affected agent." />
+            <FaqItem q="Python agent vs Rust agent?" a="Both agents produce identical AITF OCSF class-reuse JSONL output and implement all 20 detection rules. The Python agent is easier to extend and debug (watchdog, psutil, mitmproxy). The Rust agent compiles to a 4.8 MB static binary using tokio, sysinfo, notify — ideal for production deployments where minimal resource footprint matters." />
             <FaqItem q="Can I run this in production?" a="Yes. The Rust agent is designed for production use. The dashboard is a standard Next.js 14 application deployable to any hosting platform. The PostgreSQL database handles multi-tenancy with organization-scoped data. Detection policies and storage configuration are manageable per-organization or globally." />
             <FaqItem q="What about AITF-DET rule IDs?" a="The AITF-DET-001 through DET-020 rule identifiers are technical prefixes retained for backward compatibility. They reference the original AI Telemetry Framework specification. All user-facing branding uses 'CoSAI' to reflect alignment with the Coalition for Secure AI initiative." />
           </div>
@@ -701,7 +692,7 @@ curl -X POST https://your-dashboard.example.com/api/sync \\
               <span className="text-sm font-semibold">ADR</span>
             </div>
             <div className="flex items-center gap-6 text-xs text-muted-foreground">
-              <span>OCSF Category 7</span>
+              <span>AITF OCSF Class-Reuse</span>
               <span>•</span>
               <span>OWASP LLM Top 10</span>
               <span>•</span>

@@ -2,13 +2,14 @@
 import Link from 'next/link';
 import { useFetch } from '@/hooks/use-fetch';
 import { ArrowLeft, Server, Users, Cpu, Globe, ShieldAlert, Activity, FileSearch } from 'lucide-react';
-import { OCSF_CLASSES, getClassLabel } from '@/lib/aitf';
+import { getOpLabel, getOpIcon } from '@/lib/aitf';
 
 interface KillChainEvent {
   id: string;
   timestamp: string;
   eventType: string;
   classUid: number | null;
+  aiOperation: string | null;
   riskLevel: string;
   hostName: string | null;
   userName: string | null;
@@ -36,14 +37,14 @@ const PHASE_ORDER = [
 ];
 
 const PHASE_LABEL: Record<string, string> = {
-  agent_launch: 'Agent Launch (7002)',
-  inference: 'Inference (7001)',
-  tool_execution: 'Tool Execution (7003)',
-  mcp_call: 'MCP Call (7004)',
-  prompt_injection: 'Prompt Injection (7005)',
-  data_access: 'Data Access (7006)',
-  privilege_change: 'Privilege Change (7007)',
-  compliance_drift: 'Compliance Drift (7008)',
+  agent_launch: 'Agent Launch',
+  inference: 'Inference',
+  tool_execution: 'Tool Execution',
+  mcp_call: 'MCP Call',
+  prompt_injection: 'Prompt Injection',
+  data_access: 'Data Access',
+  privilege_change: 'Privilege Change',
+  compliance_drift: 'Compliance Drift',
   other: 'Other',
 };
 
@@ -145,9 +146,10 @@ export function SessionDetail({ traceId }: { traceId: string }) {
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div className="flex items-center gap-2 text-xs">
                   <span className="font-mono text-muted-foreground">{new Date(ev.timestamp).toLocaleString()}</span>
-                  {ev.classUid && (
+                  {ev.aiOperation && (
                     <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary font-mono text-[10px]">
-                      {ev.classUid} {OCSF_CLASSES[ev.classUid]?.icon ?? ''}
+                      {getOpIcon(ev.aiOperation)} {getOpLabel(ev.aiOperation)}
+                      {ev.classUid ? <span className="ml-1 opacity-70">({ev.classUid})</span> : null}
                     </span>
                   )}
                   <span className="font-medium">{ev.eventType}</span>

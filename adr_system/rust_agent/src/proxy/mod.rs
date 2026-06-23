@@ -2,13 +2,12 @@
 //!
 //! Clients (Claude Code, Codex, browsers) point HTTP_PROXY /
 //! HTTPS_PROXY at AgentDR's loopback port. For each incoming CONNECT
-//! the proxy synthesises a "candidate" EventRecord (class_uid 7001
-//! LLM Inference if the host matches a known AI endpoint, else 7002
-//! Agent Action) and feeds it to the PolicyEngine. If any matching
-//! policy returns Action::Block, the proxy responds `403 Forbidden`
-//! and emits a class_uid 7008 Compliance Violation event. Otherwise
-//! it tunnels the TCP bytes through and emits a class_uid 7001/7002
-//! observation event.
+//! the proxy synthesises a "candidate" EventRecord (ai_operation=inference,
+//! API Activity 6003, if the host matches a known AI endpoint, else
+//! ai_operation=agent_action) and feeds it to the PolicyEngine. If any
+//! matching policy returns Action::Block, the proxy responds `403 Forbidden`
+//! and emits a Compliance Finding (OCSF 2003) event. Otherwise it tunnels
+//! the TCP bytes through and emits the observation event.
 //!
 //! No TLS MITM is performed: CONNECT carries the hostname in plaintext,
 //! which is sufficient for endpoint-allowlist enforcement without
@@ -110,14 +109,13 @@ impl InlineProxy {
         for ev in decision.events { let _ = self.tx.send(ev); }
 
         if blocked {
-            // 403 + emit a class_uid 7008 record if the allowlist (not
-            // policy) was the reason, so the trace is complete.
+            // 403 + emit a Compliance Finding (OCSF 2003) record if the
+            // allowlist (not policy) was the reason, so the trace is complete.
             let _ = client.write_all(b"HTTP/1.1 403 Forbidden\r\nProxy-Agent: AgentDR\r\nContent-Length: 0\r\n\r\n").await;
             if denied_by_allowlist {
                 let mut ev = self.probe_event(&method, &host, port);
                 ev.event_type = "proxy_block".into();
-                ev.class_uid = Some(CLASS_COMPLIANCE_VIOLATION);
-                ev.type_uid = Some(CLASS_COMPLIANCE_VIOLATION * 100 + ACTIVITY_BLOCK);
+                ev.set_op(AiOperation::ComplianceViolation, ACTIVITY_BLOCK);
                 ev.activity_id = Some(ACTIVITY_BLOCK);
                 ev.status_id = Some(STATUS_BLOCKED);
                 ev.risk_level = "high".into();
@@ -147,12 +145,12 @@ impl InlineProxy {
     fn probe_event(&self, method: &str, host: &str, port: u16) -> EventRecord {
         let ai = classify_ai_endpoint(host);
         let messaging = classify_messaging_endpoint(host);
-        let class = if ai.is_some() {
-            CLASS_LLM_INFERENCE
+        let op = if ai.is_some() {
+            AiOperation::Inference
         } else if messaging.is_some() {
-            CLASS_PERMISSION_ESCALATION
+            AiOperation::PermissionEscalation
         } else {
-            CLASS_AGENT_ACTION
+            AiOperation::AgentAction
         };
         let risk = if ai.is_some() { "medium" } else if messaging.is_some() { "high" } else { "low" };
 
@@ -163,8 +161,7 @@ impl InlineProxy {
             "ai_provider": ai.as_ref().map(|p| &p.provider),
             "messaging":   messaging,
         }), risk);
-        ev.class_uid = Some(class);
-        ev.type_uid = Some(class * 100 + ACTIVITY_EXECUTE);
+        ev.set_op(op, ACTIVITY_EXECUTE);
         ev.activity_id = Some(ACTIVITY_EXECUTE);
         ev.status_id = Some(STATUS_SUCCESS);
         if let Some(a) = ai {

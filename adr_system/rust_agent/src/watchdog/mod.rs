@@ -90,8 +90,7 @@ impl WatchdogMonitor {
             }),
             "low",
         );
-        start.class_uid   = Some(CLASS_AGENT_ACTION);
-        start.type_uid    = Some(CLASS_AGENT_ACTION * 100 + ACTIVITY_CREATE);
+        start.set_op(AiOperation::AgentAction, ACTIVITY_CREATE);
         start.activity_id = Some(ACTIVITY_CREATE);
         start.status_id   = Some(STATUS_SUCCESS);
         start.source      = Some("watchdog".into());
@@ -295,8 +294,7 @@ impl WatchdogMonitor {
         } else {
             ACTIVITY_DETECT
         };
-        ev.class_uid   = Some(CLASS_COMPLIANCE_VIOLATION);
-        ev.type_uid    = Some(CLASS_COMPLIANCE_VIOLATION * 100 + activity);
+        ev.set_op(AiOperation::ComplianceViolation, activity);
         ev.activity_id = Some(activity);
         ev.status_id   = if activity == ACTIVITY_BLOCK { Some(STATUS_BLOCKED) } else { Some(STATUS_SUCCESS) };
         ev.source      = Some("watchdog".into());

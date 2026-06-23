@@ -66,7 +66,7 @@ $payload = @'
       {"key":"gen_ai.usage.input_tokens","value":{"intValue":"1240"}}]}]}]}]}
 '@
 Invoke-RestMethod -Uri http://127.0.0.1:4318/v1/traces -Method Post -ContentType application/json -Body $payload
-Get-Content "$env:DEMO_ROOT\logs\events.jsonl" -Tail 1 | ConvertFrom-Json | Format-List class_uid, event_type, provider
+Get-Content "$env:DEMO_ROOT\logs\events.jsonl" -Tail 1 | ConvertFrom-Json | Format-List class_uid, ai_operation, event_type, provider
 ```
 
 ### STEP T1.4 — MCP inventory (catches Windows-specific config paths)

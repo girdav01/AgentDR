@@ -110,8 +110,8 @@ fn default_discovery_state() -> String { "runtime/discovery-state.json".into() }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WatchdogConfig {
     /// Periodically re-hash AgentDR's own configs, the rule pack, the
-    /// binary, and every installed runtime-hook config; emit class_uid
-    /// 7008 events when an AgentDR marker is removed or a tracked file
+    /// binary, and every installed runtime-hook config; emit Compliance
+    /// Finding (OCSF 2003) events when an AgentDR marker is removed or a tracked file
     /// disappears (i.e. when a monitored agent attempts to escape
     /// surveillance).
     #[serde(default = "default_true")]
@@ -388,7 +388,7 @@ fn default_syslog_appname() -> String { "agentdr".into() }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct OcsfConfig {
     #[serde(default)] pub enabled: bool,
-    /// HTTP endpoint accepting OCSF Category 7 JSON
+    /// HTTP endpoint accepting AITF OCSF Class-Reuse JSON
     #[serde(default)] pub endpoint: String,
     /// Optional bearer token
     #[serde(default)] pub bearer_token: String,
@@ -430,7 +430,7 @@ fn default_otlp_max_bytes() -> usize { 4 * 1024 * 1024 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpConfig {
-    /// Scan known MCP config locations at startup and emit class_uid=7004 events.
+    /// Scan known MCP config locations at startup and emit ai_operation=mcp_operation (API Activity 6003) events.
     #[serde(default = "default_true")]
     pub inventory_on_start: bool,
     /// Periodically re-scan every N seconds (0 = disabled).

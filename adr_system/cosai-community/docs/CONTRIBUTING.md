@@ -53,7 +53,7 @@ Thank you for helping improve AI agent detection coverage! This guide explains h
 
 1. Open `policies/detection-rules.json`
 2. Add a new entry using the next available `AITF-DET-XXX` ID
-3. Choose an appropriate OCSF Category 7 category
+3. Choose an appropriate `ai_operation` profile and its reused OCSF class
 
 ## Pull Request Checklist
 

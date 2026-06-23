@@ -170,8 +170,7 @@ impl AgentEngine {
                         "found":   rep.scanned.agents.len(),
                         "actions": rep.actions,
                     }), "low");
-                    ev.class_uid   = Some(CLASS_AGENT_ACTION);
-                    ev.type_uid    = Some(CLASS_AGENT_ACTION * 100 + ACTIVITY_DETECT);
+                    ev.set_op(AiOperation::AgentAction, ACTIVITY_DETECT);
                     ev.activity_id = Some(ACTIVITY_DETECT);
                     ev.source      = Some("discovery".into());
                     ev.message     = Some(format!(
@@ -202,8 +201,7 @@ impl AgentEngine {
                                     "actions": rep.actions,
                                     "trigger": "scheduled",
                                 }), "low");
-                                ev.class_uid   = Some(CLASS_AGENT_ACTION);
-                                ev.type_uid    = Some(CLASS_AGENT_ACTION * 100 + ACTIVITY_DETECT);
+                                ev.set_op(AiOperation::AgentAction, ACTIVITY_DETECT);
                                 ev.activity_id = Some(ACTIVITY_DETECT);
                                 ev.source      = Some("discovery".into());
                                 ev.message     = Some(format!("scheduled discovery scan: {} agent(s)", rep.scanned.agents.len()));
@@ -278,8 +276,7 @@ impl AgentEngine {
                 "version": env!("CARGO_PKG_VERSION"),
             }), "low");
             ev.source = Some("engine".into());
-            ev.class_uid = Some(CLASS_AGENT_ACTION);
-            ev.type_uid = Some(CLASS_AGENT_ACTION * 100 + ACTIVITY_CREATE);
+            ev.set_op(AiOperation::AgentAction, ACTIVITY_CREATE);
             ev.activity_id = Some(ACTIVITY_CREATE);
             ev.status_id = Some(STATUS_SUCCESS);
             ev.message = Some("CoSAI ADR Agent Engine started (Rust)".into());
@@ -347,8 +344,7 @@ impl AgentEngine {
         let stop_event = {
             let mut ev = EventRecord::new("agent_stopped", json!({}), "low");
             ev.source = Some("engine".into());
-            ev.class_uid = Some(CLASS_AGENT_ACTION);
-            ev.type_uid = Some(CLASS_AGENT_ACTION * 100 + ACTIVITY_DELETE);
+            ev.set_op(AiOperation::AgentAction, ACTIVITY_DELETE);
             ev.activity_id = Some(ACTIVITY_DELETE);
             ev.status_id = Some(STATUS_SUCCESS);
             ev.message = Some("CoSAI ADR Agent Engine stopped".into());
