@@ -55,6 +55,9 @@ pub struct Config {
 
     #[serde(default)]
     pub discovery: DiscoveryConfig,
+
+    #[serde(default)]
+    pub openshell: OpenShellConfig,
 }
 
 // ── Tier 8 — auto-discovery of AI agents on the host ──────────────────
@@ -395,6 +398,36 @@ pub struct OcsfConfig {
     #[serde(default)] pub batch: BatchConfig,
 }
 
+// ── OpenShell audit-log ingest (NVIDIA OpenShell Gateway OCSF export) ──
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenShellConfig {
+    /// Tail NVIDIA OpenShell's OCSF v1.7.0 JSON audit log and re-emit each
+    /// Gateway allow/deny decision as an AITF EventRecord. Disabled by default.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Glob for the OpenShell OCSF JSON export. OpenShell rotates daily to
+    /// `/var/log/openshell-ocsf.YYYY-MM-DD.log`; the newest match is tailed.
+    #[serde(default = "default_openshell_glob")]
+    pub log_glob: String,
+    /// How often (seconds) to poll the newest matching log file for new lines.
+    #[serde(default = "default_openshell_poll")]
+    pub poll_interval_seconds: u64,
+}
+
+impl Default for OpenShellConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            log_glob: default_openshell_glob(),
+            poll_interval_seconds: default_openshell_poll(),
+        }
+    }
+}
+
+fn default_openshell_glob() -> String { "/var/log/openshell-ocsf*.log".into() }
+fn default_openshell_poll() -> u64 { 5 }
+
 // ── OTLP ingest (Tier 1) ──
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -705,6 +738,7 @@ impl Default for Config {
             browser: BrowserConfig::default(),
             watchdog: WatchdogConfig::default(),
             discovery: DiscoveryConfig::default(),
+            openshell: OpenShellConfig::default(),
         }
     }
 }

@@ -12,6 +12,13 @@ redact_content = true
 inventory_on_start = true
 rescan_seconds = 600
 
+# NVIDIA OpenShell Gateway OCSF audit-log ingest (opt-in).
+# Set ocsf_json_enabled on the OpenShell side, then point log_glob at its export.
+[openshell]
+enabled = false
+log_glob = "C:\\ProgramData\\OpenShell\\logs\\openshell-ocsf*.log"
+poll_interval_seconds = 5
+
 [server_push]
 enabled = false
 endpoint = ""
