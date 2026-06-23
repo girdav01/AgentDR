@@ -281,12 +281,22 @@ fn span_to_event(span: &Value, resource: &Attrs, redact: bool) -> Option<EventRe
     // Detection Finding (OCSF 2004) so analysts can review approve/deny
     // actions a user took inside a coding agent.
     let is_approval = combined.keys().any(|k| k.starts_with("gen_ai.approval.") || k.starts_with("gen_ai.policy."));
+    // AITF 0.2 — agent-to-agent delegation lifecycle (proposed OCSF class 9002).
+    let is_delegation = combined.keys().any(|k| k.starts_with("delegation.") || k.starts_with("gen_ai.delegation."));
 
-    if gen_ai_system.is_none() && tool_name.is_none() && !is_mcp && !is_approval {
+    if gen_ai_system.is_none() && tool_name.is_none() && !is_mcp && !is_approval && !is_delegation {
         return None;
     }
 
-    let (op, activity_id, event_type) = if is_approval {
+    let (op, activity_id, event_type) = if is_delegation {
+        let revoke = combined
+            .get("delegation.action")
+            .or_else(|| combined.get("gen_ai.delegation.action"))
+            .map(|a| a.eq_ignore_ascii_case("revoke"))
+            .unwrap_or(false);
+        let activity = if revoke { ACTIVITY_DELETE } else { ACTIVITY_CREATE };
+        (AiOperation::Delegation, activity, "gen_ai.delegation")
+    } else if is_approval {
         (AiOperation::PermissionEscalation, ACTIVITY_DETECT, "gen_ai.approval")
     } else if tool_name.is_some() {
         (AiOperation::ToolExecution, ACTIVITY_EXECUTE, "gen_ai.tool")
@@ -432,6 +442,23 @@ fn apply_common_attrs(ev: &mut EventRecord, attrs: &Attrs, redact: bool) {
         ev.actor = Some(json!({
             "user": user.cloned(),
             "host": host.cloned(),
+        }));
+    }
+
+    // AITF 0.2 delegation object: grantor/grantee/scope/action/ttl_seconds.
+    let dget = |k1: &str, k2: &str| attrs.get(k1).or_else(|| attrs.get(k2)).cloned();
+    if attrs.keys().any(|k| k.starts_with("delegation.") || k.starts_with("gen_ai.delegation.")) {
+        let ttl = attrs
+            .get("delegation.ttl_seconds")
+            .or_else(|| attrs.get("delegation.ttl"))
+            .or_else(|| attrs.get("gen_ai.delegation.ttl_seconds"))
+            .and_then(|s| s.parse::<u64>().ok());
+        ev.delegation = Some(json!({
+            "grantor":     dget("delegation.grantor", "gen_ai.delegation.grantor"),
+            "grantee":     dget("delegation.grantee", "gen_ai.delegation.grantee"),
+            "scope":       dget("delegation.scope", "gen_ai.delegation.scope"),
+            "action":      dget("delegation.action", "gen_ai.delegation.action"),
+            "ttl_seconds": ttl,
         }));
     }
 

@@ -9,3 +9,9 @@
 
 pub mod openshell;
 pub mod otlp;
+
+/// Opt-in interop with the official AITF Rust SDK (`aitf` crate). Enabled with
+/// `--features aitf-sdk`; off by default so the core build never depends on the
+/// (beta, not-yet-published) crate.
+#[cfg(feature = "aitf-sdk")]
+pub mod aitf_interop;
