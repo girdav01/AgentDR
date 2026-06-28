@@ -54,7 +54,10 @@ A cross-platform **Rust** agent (Windows, macOS, Linux) that runs on the monitor
 
 **Detection engine** (`src/detectors.rs`) — Stateful pattern detection implementing all 20 rules (`AITF-DET-001` → `AITF-DET-020`), plus credential-use attribution.
 
-**Policy & response** (`src/policy/`, `src/proxy/`) — A YAML policy-as-code engine and an inline HTTP CONNECT proxy that can *block* agent egress, not just observe it.
+**Policy & response** (`src/policy/`, `src/proxy/`) — A YAML policy-as-code engine and two proxies that can *block* agent traffic, not just observe it:
+
+- **Forward CONNECT proxy** (`src/proxy/mod.rs`) — controls *outbound* egress from agents to remote LLM/API hosts. Beyond the host allow-list / policy engine it now records caller **provenance** (which local PID / executable / known AI agent opened the connection), enforces optional **API-key / HS256-JWT auth** (`407`), and applies optional per-caller **rate limiting** (`429`).
+- **LLM Guard reverse proxy** (`src/proxy/reverse.rs`, `[llm_guard]`, opt-in) — sits *in front of* local model backends (Ollama, LM Studio, llama.cpp). Point your model clients at it instead of the backend. It routes by path prefix (longest match wins), authenticates + rate-limits callers, inspects request bodies for **prompt-injection & PII**, tracks **token usage** from upstream responses, runs upstream **health checks** (`GET /healthz`), and emits OCSF findings (`2004`) for blocked/suspicious requests. `block_on_*` defaults to alert-only. See [docs/integrations/llm-guard-reverse-proxy.md](docs/integrations/llm-guard-reverse-proxy.md).
 
 **Exporters** (`src/exporters/`) — Ten SIEM/observability backends (Splunk, Datadog, Elastic, Chronicle, XSIAM, Snowflake, Sentinel, Wazuh, syslog, generic OCSF).
 
