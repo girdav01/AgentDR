@@ -16,6 +16,70 @@ rest of AgentDR via the shared event bus.
 
 ---
 
+## Quick start
+
+Get the LLM Guard reverse proxy in front of a local Ollama in three steps.
+
+**1. Enable it in `config.toml`** (minimal — observe-only, no auth):
+
+```toml
+[llm_guard]
+enabled = true
+listen_address = "127.0.0.1:8011"
+
+[[llm_guard.backends]]
+name = "ollama"
+kind = "ollama"
+url = "http://127.0.0.1:11434"
+route_prefix = "/ollama"
+health_path = "/api/tags"
+
+[llm_guard.monitoring]
+enabled = true              # inspect prompts for injection / PII, track tokens
+```
+
+> Config locations: Linux & macOS `/etc/agentdr/config.toml`, Windows
+> `C:\ProgramData\AgentDR\config.toml`. When running from a checkout, the agent
+> reads `<root>/config.toml` (override with `--config`). The shipped
+> Windows `default-config.toml` includes a fully-commented `[llm_guard]` block.
+
+**2. Start the agent** — the guard spawns automatically when `enabled = true`:
+
+```
+adr-agent start
+# guard now listening on http://127.0.0.1:8011
+```
+
+**3. Point your client at the guard instead of the backend.** The
+`route_prefix` selects the backend and is stripped before forwarding, so
+`/ollama/api/generate` → `http://127.0.0.1:11434/api/generate`:
+
+```
+curl http://127.0.0.1:8011/ollama/api/generate \
+  -d '{"model":"llama3","prompt":"Hello"}'
+
+# liveness of every configured backend:
+curl http://127.0.0.1:8011/healthz
+```
+
+Open the dashboard's **LLM Guard** page to watch requests, findings, token
+usage and backend health in real time (see
+[Dashboard UI](#3-dashboard-ui-monitoring--configuration) below).
+
+### Common use cases
+
+| Goal | What to set |
+|---|---|
+| **Just observe** local LLM traffic (default) | `[llm_guard] enabled = true`, `monitoring.enabled = true`, leave `block_on_* = false` |
+| **Block prompt-injection / PII** at the edge | `monitoring.block_on_injection = true` and/or `block_on_pii = true` |
+| **Require an API key** from callers | `llm_guard.auth_tokens = ["<key>"]` → callers send `Authorization: Bearer <key>` |
+| **Verify JWTs** instead of static keys | `[llm_guard.jwt] enabled = true`, `secret = "<hs256>"` |
+| **Throttle abusive callers** | `[llm_guard.rate_limits] enabled = true`, tune `requests_per_minute` / `burst` |
+| **Front several backends** (Ollama + LM Studio + llama.cpp) | add one `[[llm_guard.backends]]` block per backend with distinct `route_prefix` |
+| **Guard outbound agent egress** too | enable the separate `[proxy]` forward proxy (section 1) |
+
+---
+
 ## 1. Forward CONNECT proxy enrichment (`[proxy]`)
 
 The existing inline blocking proxy still does host allow-listing + policy-engine
@@ -172,3 +236,52 @@ curl http://127.0.0.1:8011/healthz
 - Content inspection is signature/heuristic based — tune
   `detect_*` / `block_on_*` to your tolerance for false positives before
   enabling hard blocking.
+
+---
+
+## 3. Dashboard UI (monitoring & configuration)
+
+The Next.js analyst dashboard ships two LLM Guard surfaces. Both require sign-in;
+editing configuration additionally requires an **admin** or **owner** role.
+
+### Monitoring — `/llm-guard`
+
+The **LLM Guard** item in the sidebar opens a live monitoring view. Pick a time
+window (1h / 24h / 7d); the page auto-refreshes and shows:
+
+- **Stat cards** — healthy backends, total requests, blocked requests,
+  rate-limited requests, prompt-injection findings, PII findings, total tokens.
+- **Backend health** — per-backend status (healthy / unhealthy), last HTTP
+  status and latency. Powered by `GET /api/llm-guard/health`, which probes each
+  backend's `health_path` directly.
+- **Token usage trend** — hourly token consumption (Recharts area chart).
+- **Recent security findings** — prompt-injection / PII detections, auth
+  denials, rate-limit hits and upstream errors, each with provider, agent and
+  host attribution.
+- **Active sessions** — distinct callers (subjects) with request counts and last
+  seen time.
+
+Findings come from `GET /api/llm-guard/findings`, which aggregates `Event` rows
+where `source = 'llm-guard'` (the events emitted by the reverse proxy and
+relayed to the dashboard via `/api/sync`). If the database is unreachable the
+page degrades gracefully and renders an empty-but-valid view rather than
+erroring.
+
+### Configuration — `/settings/llm-guard`
+
+Admins/owners can manage the guard from the UI instead of hand-editing TOML:
+
+- **General** — enable/disable, listen address, health-check interval, upstream
+  timeout, max request-body size.
+- **Backends** — add / edit / remove backends (name, kind, URL, route prefix,
+  health path).
+- **Authentication** — static API keys (masked on display) and optional HS256
+  JWT (secret, issuer, audience).
+- **Rate limits** — enable/disable, requests-per-minute, burst.
+- **Monitoring** — content inspection, prompt-injection detection, PII
+  detection, token tracking, `block_on_*` behaviour, and `max_prompt_chars`.
+
+Secrets (API keys, JWT secret) are **masked** when fetched and only overwritten
+when you submit a new value, so saving the form never clobbers existing
+credentials. Settings persist to `data/llm-guard-config.json` via
+`GET`/`POST /api/llm-guard/config`. Non-admins see the page read-only.
