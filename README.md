@@ -2,7 +2,7 @@
 
 > An open-source prototype for detecting, monitoring, and responding to AI agent activity on endpoints, aligned with the **CoSAI AI Telemetry Framework (AITF)** and the [`girdav01/AITF`](https://github.com/girdav01/AITF) reference spec.
 
-AgentDR is an early-stage research prototype that demonstrates what an *Endpoint Detection & Response* product looks like when the threat model expands to include autonomous AI agents — coding assistants, browser-use agents, multi-agent orchestrators, enterprise copilots, and rogue general-purpose agents (OpenClaw, AutoGPT, etc.). It captures rich AI-aware telemetry from monitored endpoints, classifies activity against community-maintained signature rules, and surfaces alerts through a Next.js analyst dashboard.
+AgentDR is an early-stage research prototype that demonstrates what an *Endpoint Detection & Response* product looks like when the threat model expands to include autonomous AI agents — coding assistants, browser-use agents, multi-agent orchestrators, enterprise copilots, and rogue general-purpose agents (OpenClaw, AutoGPT, etc.). It captures rich AI-aware telemetry from monitored endpoints, classifies activity against community-maintained signature rules, and surfaces alerts through a Next.js analyst dashboard. It can also **actively guard** AI traffic with two opt-in proxies — an outbound forward proxy and the **LLM Guard** reverse proxy that fronts local model backends (Ollama, LM Studio, llama.cpp), inspecting prompts/responses for prompt-injection & PII and tracking token usage.
 
 The project is organized into two cooperating components plus a shared, pluggable rule pack:
 
@@ -54,7 +54,10 @@ A cross-platform **Rust** agent (Windows, macOS, Linux) that runs on the monitor
 
 **Detection engine** (`src/detectors.rs`) — Stateful pattern detection implementing all 20 rules (`AITF-DET-001` → `AITF-DET-020`), plus credential-use attribution.
 
-**Policy & response** (`src/policy/`, `src/proxy/`) — A YAML policy-as-code engine and an inline HTTP CONNECT proxy that can *block* agent egress, not just observe it.
+**Policy & response** (`src/policy/`, `src/proxy/`) — A YAML policy-as-code engine and two proxies that can *block* agent traffic, not just observe it:
+
+- **Forward CONNECT proxy** (`src/proxy/mod.rs`) — controls *outbound* egress from agents to remote LLM/API hosts. Beyond the host allow-list / policy engine it now records caller **provenance** (which local PID / executable / known AI agent opened the connection), enforces optional **API-key / HS256-JWT auth** (`407`), and applies optional per-caller **rate limiting** (`429`).
+- **LLM Guard reverse proxy** (`src/proxy/reverse.rs`, `[llm_guard]`, opt-in) — sits *in front of* local model backends (Ollama, LM Studio, llama.cpp). Point your model clients at it instead of the backend. It routes by path prefix (longest match wins), authenticates + rate-limits callers, inspects request bodies for **prompt-injection & PII**, tracks **token usage** from upstream responses, runs upstream **health checks** (`GET /healthz`), and emits OCSF findings (`2004`) for blocked/suspicious requests. `block_on_*` defaults to alert-only. See [docs/integrations/llm-guard-reverse-proxy.md](docs/integrations/llm-guard-reverse-proxy.md).
 
 **Exporters** (`src/exporters/`) — Ten SIEM/observability backends (Splunk, Datadog, Elastic, Chronicle, XSIAM, Snowflake, Sentinel, Wazuh, syslog, generic OCSF).
 
@@ -88,6 +91,7 @@ A Next.js 14 (App Router) + TypeScript + Tailwind + shadcn/ui application backed
 - **Alerts** — triage view of detection rule firings.
 - **Analytics** — timeline charts, agent distribution, event-type distribution (Recharts/Plotly).
 - **Policies** — enable/disable detection rules and adjust thresholds per organization.
+- **LLM Guard** — monitor the reverse-proxy in front of local models: backend health, blocked/flagged requests, prompt-injection & PII findings, token usage, and active callers; plus a settings page to configure backends, auth, rate limits, and content inspection. See [docs/integrations/llm-guard-reverse-proxy.md](docs/integrations/llm-guard-reverse-proxy.md).
 - **Settings** — storage retention, archival, multi-tenant org configuration.
 - **Auth** — NextAuth with Prisma adapter (org/role: owner / admin / analyst / viewer).
 

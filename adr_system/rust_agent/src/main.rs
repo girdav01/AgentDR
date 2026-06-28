@@ -419,7 +419,12 @@ async fn main() {
                 }
             });
             let (_sd_tx, sd_rx) = tokio::sync::watch::channel(false);
-            let prx = proxy::InlineProxy::new(bind, engine, allow, tx);
+            // Start from the config's [proxy] settings (auth / rate limits /
+            // provenance) and override bind + allowlist with the CLI args.
+            let mut proxy_cfg = cfg.proxy.clone();
+            proxy_cfg.bind = bind;
+            proxy_cfg.allowlist = allow;
+            let prx = proxy::InlineProxy::from_config(&proxy_cfg, engine, tx);
             prx.run(sd_rx).await;
         }
 

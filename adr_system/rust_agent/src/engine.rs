@@ -143,15 +143,32 @@ impl AgentEngine {
             });
         }
 
-        // ── Tier 5: inline blocking proxy ──
+        // ── Tier 5: inline blocking forward proxy ──
+        // Now enriched with caller provenance, optional auth + per-caller
+        // rate limiting (see `proxy::InlineProxy::from_config`).
         if self.config.proxy.enabled {
             let proxy_tx = event_tx.clone();
             let proxy_shutdown = shutdown_rx.clone();
-            let bind = self.config.proxy.bind.clone();
-            let allow = self.config.proxy.allowlist.clone();
+            let proxy_cfg = self.config.proxy.clone();
             let engine = policy_engine.clone();
             tokio::spawn(async move {
-                InlineProxy::new(bind, engine, allow, proxy_tx).run(proxy_shutdown).await;
+                InlineProxy::from_config(&proxy_cfg, engine, proxy_tx)
+                    .run(proxy_shutdown)
+                    .await;
+            });
+        }
+
+        // ── Tier 9: LLM Guard reverse proxy ──
+        // Reverse proxy in front of local model backends (Ollama, LM Studio,
+        // llama.cpp). Authenticates + rate-limits callers, records process
+        // provenance, scans prompts for injection / PII, tracks token usage,
+        // and probes upstream health.
+        if self.config.llm_guard.enabled {
+            let lg_tx = event_tx.clone();
+            let lg_shutdown = shutdown_rx.clone();
+            let lg_cfg = self.config.llm_guard.clone();
+            tokio::spawn(async move {
+                crate::proxy::reverse::serve(&lg_cfg, lg_tx, lg_shutdown).await;
             });
         }
 

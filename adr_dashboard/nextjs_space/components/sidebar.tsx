@@ -7,7 +7,7 @@ import { useState } from 'react';
 import {
   Shield, LayoutDashboard, Activity, ScrollText, BarChart3,
   AlertTriangle, Menu, X, LogOut, ChevronLeft, User,
-  ShieldCheck, Settings, GitBranch, Brain,
+  ShieldCheck, Settings, GitBranch, Brain, ShieldHalf,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -20,6 +20,7 @@ const navItems = [
   { href: '/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/alerts', label: 'Alerts', icon: AlertTriangle },
   { href: '/policies', label: 'Policies', icon: ShieldCheck },
+  { href: '/llm-guard', label: 'LLM Guard', icon: ShieldHalf },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 

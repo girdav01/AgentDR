@@ -58,6 +58,9 @@ pub struct Config {
 
     #[serde(default)]
     pub openshell: OpenShellConfig,
+
+    #[serde(default)]
+    pub llm_guard: LlmGuardConfig,
 }
 
 // ── Tier 8 — auto-discovery of AI agents on the host ──────────────────
@@ -165,13 +168,49 @@ pub struct ProxyConfig {
     /// When empty, only the PolicyEngine decides.
     #[serde(default)]
     pub allowlist: Vec<String>,
+    /// Resolve the local process that opened each proxied connection
+    /// (PID / executable / command line) and attribute the call to a known
+    /// AI agent via the agent-signature table. Adds an `actor` object and
+    /// `agent_name` / `agent_framework` to emitted events. Linux-only
+    /// (degrades to a peer-address-only record elsewhere). Costs one
+    /// `/proc` scan per new connection — leave off for very high request
+    /// volumes.
+    #[serde(default = "default_true")]
+    pub provenance: bool,
+    /// Optional static API keys required in the `Proxy-Authorization:
+    /// Bearer <key>` (or `X-API-Key`) header. When empty *and* JWT auth is
+    /// off, the proxy does not require credentials (observe-only) so it
+    /// stays a drop-in for existing clients.
+    #[serde(default)]
+    pub auth_tokens: Vec<String>,
+    /// Optional HS256 JWT verification for `Proxy-Authorization` bearers.
+    #[serde(default)]
+    pub jwt: JwtConfig,
+    /// Per-caller sliding-window rate limiting (keyed by auth subject, or by
+    /// process / peer when anonymous). Off by default for the forward proxy
+    /// so it does not throttle browsers that legitimately burst.
+    #[serde(default = "default_proxy_rate_limits")]
+    pub rate_limits: RateLimitConfig,
 }
 impl Default for ProxyConfig {
     fn default() -> Self {
-        Self { enabled: false, bind: default_proxy_bind(), allowlist: Vec::new() }
+        Self {
+            enabled: false,
+            bind: default_proxy_bind(),
+            allowlist: Vec::new(),
+            provenance: true,
+            auth_tokens: Vec::new(),
+            jwt: JwtConfig::default(),
+            rate_limits: default_proxy_rate_limits(),
+        }
     }
 }
 fn default_proxy_bind() -> String { "127.0.0.1:8080".into() }
+/// Forward-proxy rate limiting defaults to *disabled* (unlike the reverse
+/// proxy) to avoid throttling chatty browser/agent clients out of the box.
+fn default_proxy_rate_limits() -> RateLimitConfig {
+    RateLimitConfig { enabled: false, ..RateLimitConfig::default() }
+}
 
 // ── Tier 6 — kernel + browser telemetry ────────────────────────────────
 
@@ -397,6 +436,231 @@ pub struct OcsfConfig {
     #[serde(default)] pub bearer_token: String,
     #[serde(default)] pub batch: BatchConfig,
 }
+
+// ── Tier 9 — LLM Guard reverse proxy ──────────────────────────────────
+//
+// A reverse proxy in front of local model backends (Ollama, LM Studio,
+// llama.cpp). It authenticates callers (static API keys + optional HS256
+// JWTs), applies per-key sliding-window rate limits, records process
+// provenance (which local PID / binary issued the call), inspects prompts
+// for injection attempts and PII, tracks token usage, and emits OCSF
+// findings for every blocked / suspicious request. Disabled by default.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmGuardConfig {
+    /// Master switch. When false the reverse proxy never binds a port.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Address the guard listens on, e.g. `127.0.0.1:8011`. Point your
+    /// Ollama / LM Studio clients at this instead of the backend directly.
+    #[serde(default = "default_llm_guard_listen")]
+    pub listen_address: String,
+    /// Upstream model backends. Requests are routed by `route_prefix`
+    /// (longest match wins); a backend with an empty prefix is the default.
+    #[serde(default = "default_llm_guard_backends")]
+    pub backends: Vec<BackendConfig>,
+    /// Static API keys accepted in `Authorization: Bearer <key>` or the
+    /// `X-API-Key` header. When this list is empty *and* JWT auth is off,
+    /// the guard runs in observe-only mode (no request is rejected for
+    /// missing credentials) so it can be dropped in front of an existing
+    /// setup without breaking it.
+    #[serde(default)]
+    pub auth_tokens: Vec<String>,
+    /// Optional HS256 JWT verification (reuses hmac+sha2).
+    #[serde(default)]
+    pub jwt: JwtConfig,
+    /// Per-key sliding-window rate limiting.
+    #[serde(default)]
+    pub rate_limits: RateLimitConfig,
+    /// Prompt-injection / PII / token-usage monitoring.
+    #[serde(default)]
+    pub monitoring: MonitoringConfig,
+    /// Periodic upstream health-check interval in seconds (0 = disabled).
+    /// A `GET /healthz` endpoint always reports the latest results on demand.
+    #[serde(default = "default_llm_guard_health_interval")]
+    pub health_check_interval_seconds: u64,
+    /// Maximum accepted request body size (bytes). Default 8 MiB.
+    #[serde(default = "default_llm_guard_max_body")]
+    pub max_body_bytes: usize,
+    /// Upstream request timeout in seconds.
+    #[serde(default = "default_llm_guard_timeout")]
+    pub upstream_timeout_seconds: u64,
+}
+
+impl Default for LlmGuardConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            listen_address: default_llm_guard_listen(),
+            backends: default_llm_guard_backends(),
+            auth_tokens: Vec::new(),
+            jwt: JwtConfig::default(),
+            rate_limits: RateLimitConfig::default(),
+            monitoring: MonitoringConfig::default(),
+            health_check_interval_seconds: default_llm_guard_health_interval(),
+            max_body_bytes: default_llm_guard_max_body(),
+            upstream_timeout_seconds: default_llm_guard_timeout(),
+        }
+    }
+}
+
+fn default_llm_guard_listen() -> String { "127.0.0.1:8011".into() }
+fn default_llm_guard_health_interval() -> u64 { 30 }
+fn default_llm_guard_max_body() -> usize { 8 * 1024 * 1024 }
+fn default_llm_guard_timeout() -> u64 { 120 }
+
+fn default_llm_guard_backends() -> Vec<BackendConfig> {
+    vec![
+        BackendConfig {
+            name: "ollama".into(),
+            kind: "ollama".into(),
+            url: "http://127.0.0.1:11434".into(),
+            route_prefix: "/ollama".into(),
+            health_path: "/api/tags".into(),
+        },
+        BackendConfig {
+            name: "lmstudio".into(),
+            kind: "lmstudio".into(),
+            url: "http://127.0.0.1:1234".into(),
+            route_prefix: "/lmstudio".into(),
+            health_path: "/v1/models".into(),
+        },
+        BackendConfig {
+            name: "llamacpp".into(),
+            kind: "llamacpp".into(),
+            url: "http://127.0.0.1:8080".into(),
+            route_prefix: "/llamacpp".into(),
+            health_path: "/health".into(),
+        },
+    ]
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackendConfig {
+    /// Human-readable backend name (used in events / logs).
+    #[serde(default)]
+    pub name: String,
+    /// Backend family: `ollama` | `lmstudio` | `llamacpp`. Currently used
+    /// for labelling and provider attribution on emitted events.
+    #[serde(default)]
+    pub kind: String,
+    /// Upstream base URL, e.g. `http://127.0.0.1:11434`.
+    #[serde(default)]
+    pub url: String,
+    /// Path prefix that routes a request to this backend. The prefix is
+    /// stripped before forwarding. An empty prefix matches everything
+    /// (default backend). Longest matching prefix wins.
+    #[serde(default)]
+    pub route_prefix: String,
+    /// Relative path pinged by the health checker, e.g. `/api/tags`.
+    #[serde(default = "default_backend_health_path")]
+    pub health_path: String,
+}
+
+impl Default for BackendConfig {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            kind: String::new(),
+            url: String::new(),
+            route_prefix: String::new(),
+            health_path: default_backend_health_path(),
+        }
+    }
+}
+
+fn default_backend_health_path() -> String { "/".into() }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JwtConfig {
+    /// Accept HS256 JWTs in addition to (or instead of) static API keys.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Shared secret used to verify the HMAC-SHA256 signature.
+    #[serde(default)]
+    pub secret: String,
+    /// Optional expected `iss` (issuer) claim. Empty = not checked.
+    #[serde(default)]
+    pub issuer: String,
+    /// Optional expected `aud` (audience) claim. Empty = not checked.
+    #[serde(default)]
+    pub audience: String,
+}
+
+impl Default for JwtConfig {
+    fn default() -> Self {
+        Self { enabled: false, secret: String::new(), issuer: String::new(), audience: String::new() }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RateLimitConfig {
+    /// Enforce per-key sliding-window rate limits.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Sustained request rate allowed per key, per minute.
+    #[serde(default = "default_rl_per_minute")]
+    pub requests_per_minute: u32,
+    /// Maximum burst (number of requests allowed instantaneously before the
+    /// sustained rate applies). Defaults to `requests_per_minute` when 0.
+    #[serde(default = "default_rl_burst")]
+    pub burst: u32,
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self { enabled: true, requests_per_minute: default_rl_per_minute(), burst: default_rl_burst() }
+    }
+}
+
+fn default_rl_per_minute() -> u32 { 120 }
+fn default_rl_burst() -> u32 { 30 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MonitoringConfig {
+    /// Inspect request bodies for prompt content. When false the guard only
+    /// authenticates / rate-limits / proxies (no content inspection).
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Scan prompts for known prompt-injection / jailbreak patterns.
+    #[serde(default = "default_true")]
+    pub detect_prompt_injection: bool,
+    /// Scan prompts for PII (emails, credit cards, SSNs, API keys, ...).
+    #[serde(default = "default_true")]
+    pub detect_pii: bool,
+    /// Track token usage reported by the upstream response.
+    #[serde(default = "default_true")]
+    pub track_tokens: bool,
+    /// Reject (403) requests where a prompt-injection pattern matches.
+    /// When false, the request is still forwarded but a Detection Finding
+    /// is emitted (observe / alert-only mode).
+    #[serde(default)]
+    pub block_on_injection: bool,
+    /// Reject (403) requests containing PII. When false, a finding is
+    /// emitted but the request proceeds.
+    #[serde(default)]
+    pub block_on_pii: bool,
+    /// Maximum number of prompt characters retained in emitted events
+    /// (truncated for privacy / log size). The full prompt is never stored.
+    #[serde(default = "default_max_prompt_chars")]
+    pub max_prompt_chars: usize,
+}
+
+impl Default for MonitoringConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            detect_prompt_injection: true,
+            detect_pii: true,
+            track_tokens: true,
+            block_on_injection: false,
+            block_on_pii: false,
+            max_prompt_chars: default_max_prompt_chars(),
+        }
+    }
+}
+
+fn default_max_prompt_chars() -> usize { 256 }
 
 // ── OpenShell audit-log ingest (NVIDIA OpenShell Gateway OCSF export) ──
 
@@ -739,6 +1003,7 @@ impl Default for Config {
             watchdog: WatchdogConfig::default(),
             discovery: DiscoveryConfig::default(),
             openshell: OpenShellConfig::default(),
+            llm_guard: LlmGuardConfig::default(),
         }
     }
 }
