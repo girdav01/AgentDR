@@ -64,7 +64,7 @@ curl http://127.0.0.1:8011/healthz
 
 Open the dashboard's **LLM Guard** page to watch requests, findings, token
 usage and backend health in real time (see
-[Dashboard UI](#dashboard-ui-monitoring--configuration) below).
+[Dashboard UI](#3-dashboard-ui-monitoring--configuration) below).
 
 ### Common use cases
 
