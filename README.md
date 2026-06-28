@@ -2,7 +2,7 @@
 
 > An open-source prototype for detecting, monitoring, and responding to AI agent activity on endpoints, aligned with the **CoSAI AI Telemetry Framework (AITF)** and the [`girdav01/AITF`](https://github.com/girdav01/AITF) reference spec.
 
-AgentDR is an early-stage research prototype that demonstrates what an *Endpoint Detection & Response* product looks like when the threat model expands to include autonomous AI agents — coding assistants, browser-use agents, multi-agent orchestrators, enterprise copilots, and rogue general-purpose agents (OpenClaw, AutoGPT, etc.). It captures rich AI-aware telemetry from monitored endpoints, classifies activity against community-maintained signature rules, and surfaces alerts through a Next.js analyst dashboard.
+AgentDR is an early-stage research prototype that demonstrates what an *Endpoint Detection & Response* product looks like when the threat model expands to include autonomous AI agents — coding assistants, browser-use agents, multi-agent orchestrators, enterprise copilots, and rogue general-purpose agents (OpenClaw, AutoGPT, etc.). It captures rich AI-aware telemetry from monitored endpoints, classifies activity against community-maintained signature rules, and surfaces alerts through a Next.js analyst dashboard. It can also **actively guard** AI traffic with two opt-in proxies — an outbound forward proxy and the **LLM Guard** reverse proxy that fronts local model backends (Ollama, LM Studio, llama.cpp), inspecting prompts/responses for prompt-injection & PII and tracking token usage.
 
 The project is organized into two cooperating components plus a shared, pluggable rule pack:
 
@@ -91,6 +91,7 @@ A Next.js 14 (App Router) + TypeScript + Tailwind + shadcn/ui application backed
 - **Alerts** — triage view of detection rule firings.
 - **Analytics** — timeline charts, agent distribution, event-type distribution (Recharts/Plotly).
 - **Policies** — enable/disable detection rules and adjust thresholds per organization.
+- **LLM Guard** — monitor the reverse-proxy in front of local models: backend health, blocked/flagged requests, prompt-injection & PII findings, token usage, and active callers; plus a settings page to configure backends, auth, rate limits, and content inspection. See [docs/integrations/llm-guard-reverse-proxy.md](docs/integrations/llm-guard-reverse-proxy.md).
 - **Settings** — storage retention, archival, multi-tenant org configuration.
 - **Auth** — NextAuth with Prisma adapter (org/role: owner / admin / analyst / viewer).
 
