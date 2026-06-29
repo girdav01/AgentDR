@@ -109,6 +109,18 @@ enum Command {
         #[arg(long)]
         allow: Vec<String>,
     },
+
+    /// Run the LLM Guard reverse proxy in standalone mode (Tier 9).
+    ///
+    /// Fronts local model backends (Ollama, LM Studio, llama.cpp) using the
+    /// `[llm_guard]` config block. Authenticates + rate-limits callers, scans
+    /// request bodies for prompt-injection / PII, tracks token usage, probes
+    /// upstream health (`GET /healthz`), and emits OCSF/AITF events as JSONL.
+    LlmGuard {
+        /// Listen address override (defaults to `[llm_guard].listen_address`).
+        #[arg(long)]
+        listen: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -426,6 +438,39 @@ async fn main() {
             proxy_cfg.allowlist = allow;
             let prx = proxy::InlineProxy::from_config(&proxy_cfg, engine, tx);
             prx.run(sd_rx).await;
+        }
+
+        Command::LlmGuard { listen } => {
+            let cfg = config::Config::load(&config_path);
+            let log_path = cli.root.join(&cfg.storage.events_path);
+            // Standalone reverse proxy: writes JSONL directly, no engine bus.
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<models::EventRecord>();
+            let log_path_w = log_path.clone();
+            tokio::spawn(async move {
+                if let Some(parent) = log_path_w.parent() { let _ = std::fs::create_dir_all(parent); }
+                while let Some(ev) = rx.recv().await {
+                    if let Ok(line) = serde_json::to_string(&ev) {
+                        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&log_path_w) {
+                            use std::io::Write;
+                            let _ = writeln!(f, "{}", line);
+                        }
+                    }
+                }
+            });
+            // Start from the config's [llm_guard] settings (backends / auth /
+            // rate limits / monitoring). Force-enable for the standalone run and
+            // honour an optional --listen override.
+            let mut lg_cfg = cfg.llm_guard.clone();
+            lg_cfg.enabled = true;
+            if let Some(addr) = listen {
+                lg_cfg.listen_address = addr;
+            }
+            if lg_cfg.backends.is_empty() {
+                eprintln!("llm-guard: no backends configured under [llm_guard]; nothing to protect");
+                std::process::exit(2);
+            }
+            let (_sd_tx, sd_rx) = tokio::sync::watch::channel(false);
+            proxy::reverse::serve(&lg_cfg, tx, sd_rx).await;
         }
 
         Command::Start { quiet, watch } => {

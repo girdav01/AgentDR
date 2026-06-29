@@ -50,6 +50,16 @@ adr-agent start
 # guard now listening on http://127.0.0.1:8011
 ```
 
+Or run **just the guard**, standalone, without the rest of the agent — handy
+for a dedicated model-gateway host. It reads the same `[llm_guard]` block
+(force-enabled for the run) and writes events as JSONL to the configured
+events path:
+
+```
+adr-agent llm-guard                       # uses [llm_guard].listen_address
+adr-agent llm-guard --listen 0.0.0.0:8011 # override the bind address
+```
+
 **3. Point your client at the guard instead of the backend.** The
 `route_prefix` selects the backend and is stripped before forwarding, so
 `/ollama/api/generate` → `http://127.0.0.1:11434/api/generate`:
