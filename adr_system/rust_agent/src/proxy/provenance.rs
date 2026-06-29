@@ -75,6 +75,61 @@ pub fn resolve(peer: SocketAddr) -> Provenance {
     prov
 }
 
+/// Outcome of a process access-control evaluation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AclDecision {
+    /// The caller may proceed.
+    Allow,
+    /// The caller is rejected; the string is a human-readable reason.
+    Deny(String),
+}
+
+impl crate::config::ProcessAclConfig {
+    /// Evaluate this ACL against a resolved [`Provenance`] and the optional
+    /// attributed agent name. `deny` rules win over `allow` rules; when neither
+    /// matches, the configured `default` (`"deny"` / `"allow"`) decides.
+    ///
+    /// Matching is a case-insensitive substring test against a haystack of
+    /// `name + exe + cmdline + agent_name`.
+    pub fn evaluate(&self, prov: &Provenance, agent_name: Option<&str>) -> AclDecision {
+        if !self.enabled {
+            return AclDecision::Allow;
+        }
+
+        let mut hay = prov.haystack().to_lowercase();
+        if let Some(a) = agent_name {
+            hay.push(' ');
+            hay.push_str(&a.to_lowercase());
+        }
+
+        // Deny always wins.
+        for pat in &self.deny {
+            let p = pat.trim().to_lowercase();
+            if !p.is_empty() && hay.contains(&p) {
+                return AclDecision::Deny(format!("matched deny rule '{}'", pat.trim()));
+            }
+        }
+        // Then an explicit allow.
+        for pat in &self.allow {
+            let p = pat.trim().to_lowercase();
+            if !p.is_empty() && hay.contains(&p) {
+                return AclDecision::Allow;
+            }
+        }
+        // Unresolved callers (no PID) can't match exe/cmdline rules; gate them
+        // explicitly so an allowlist on a host that can't resolve provenance
+        // isn't silently bypassed.
+        if prov.pid.is_none() && self.block_unresolved {
+            return AclDecision::Deny("caller process could not be resolved".into());
+        }
+        // Fall back to the default policy.
+        match self.default.trim().to_ascii_lowercase().as_str() {
+            "allow" => AclDecision::Allow,
+            _ => AclDecision::Deny("no allow rule matched (default deny)".into()),
+        }
+    }
+}
+
 #[cfg(target_os = "linux")]
 mod linux {
     use super::Provenance;
@@ -187,5 +242,94 @@ mod linux {
                 prov.name = Some(comm.trim().to_string());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::ProcessAclConfig;
+
+    fn prov_with(name: &str, exe: &str, cmdline: &[&str], pid: Option<u32>) -> Provenance {
+        Provenance {
+            pid,
+            exe: Some(exe.into()),
+            cmdline: cmdline.iter().map(|s| s.to_string()).collect(),
+            name: Some(name.into()),
+            peer: "127.0.0.1:54321".into(),
+        }
+    }
+
+    #[test]
+    fn disabled_acl_always_allows() {
+        let acl = ProcessAclConfig { enabled: false, default: "deny".into(), ..Default::default() };
+        let p = prov_with("python3", "/usr/bin/python3", &["python3", "x.py"], Some(7));
+        assert_eq!(acl.evaluate(&p, None), AclDecision::Allow);
+    }
+
+    #[test]
+    fn allowlist_default_deny_blocks_unlisted() {
+        let acl = ProcessAclConfig {
+            enabled: true,
+            default: "deny".into(),
+            allow: vec!["ollama".into(), "claude-code".into()],
+            ..Default::default()
+        };
+        // Listed by attributed agent name → allowed.
+        let p = prov_with("node", "/usr/bin/node", &["node", "cli.js"], Some(7));
+        assert_eq!(acl.evaluate(&p, Some("claude-code")), AclDecision::Allow);
+        // Not listed → denied by default.
+        let p2 = prov_with("python3", "/usr/bin/python3", &["python3", "exfil.py"], Some(8));
+        assert!(matches!(acl.evaluate(&p2, None), AclDecision::Deny(_)));
+    }
+
+    #[test]
+    fn denylist_default_allow_blocks_listed() {
+        let acl = ProcessAclConfig {
+            enabled: true,
+            default: "allow".into(),
+            deny: vec!["exfil".into()],
+            ..Default::default()
+        };
+        let p = prov_with("python3", "/usr/bin/python3", &["python3", "exfil.py"], Some(8));
+        assert!(matches!(acl.evaluate(&p, None), AclDecision::Deny(_)));
+        let ok = prov_with("ollama", "/usr/local/bin/ollama", &["ollama", "run"], Some(9));
+        assert_eq!(acl.evaluate(&ok, None), AclDecision::Allow);
+    }
+
+    #[test]
+    fn deny_wins_over_allow() {
+        let acl = ProcessAclConfig {
+            enabled: true,
+            default: "deny".into(),
+            allow: vec!["python".into()],
+            deny: vec!["exfil".into()],
+            ..Default::default()
+        };
+        let p = prov_with("python3", "/usr/bin/python3", &["python3", "exfil.py"], Some(8));
+        assert!(matches!(acl.evaluate(&p, None), AclDecision::Deny(_)));
+    }
+
+    #[test]
+    fn block_unresolved_gates_pidless_callers() {
+        let base = ProcessAclConfig { enabled: true, default: "allow".into(), ..Default::default() };
+        let unresolved = Provenance { peer: "127.0.0.1:5555".into(), ..Default::default() };
+        // default allow, not blocking unresolved → allowed
+        assert_eq!(base.evaluate(&unresolved, None), AclDecision::Allow);
+        // ...but block_unresolved flips it to deny
+        let strict = ProcessAclConfig { block_unresolved: true, ..base };
+        assert!(matches!(strict.evaluate(&unresolved, None), AclDecision::Deny(_)));
+    }
+
+    #[test]
+    fn matching_is_case_insensitive() {
+        let acl = ProcessAclConfig {
+            enabled: true,
+            default: "deny".into(),
+            allow: vec!["Ollama".into()],
+            ..Default::default()
+        };
+        let p = prov_with("ollama", "/usr/local/bin/ollama", &["ollama"], Some(3));
+        assert_eq!(acl.evaluate(&p, None), AclDecision::Allow);
     }
 }

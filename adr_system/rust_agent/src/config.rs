@@ -475,6 +475,10 @@ pub struct LlmGuardConfig {
     /// Prompt-injection / PII / token-usage monitoring.
     #[serde(default)]
     pub monitoring: MonitoringConfig,
+    /// Process-based access control — gate requests on which local process
+    /// (or attributed agent) is calling. Disabled by default.
+    #[serde(default)]
+    pub process_acl: ProcessAclConfig,
     /// Periodic upstream health-check interval in seconds (0 = disabled).
     /// A `GET /healthz` endpoint always reports the latest results on demand.
     #[serde(default = "default_llm_guard_health_interval")]
@@ -497,6 +501,7 @@ impl Default for LlmGuardConfig {
             jwt: JwtConfig::default(),
             rate_limits: RateLimitConfig::default(),
             monitoring: MonitoringConfig::default(),
+            process_acl: ProcessAclConfig::default(),
             health_check_interval_seconds: default_llm_guard_health_interval(),
             max_body_bytes: default_llm_guard_max_body(),
             upstream_timeout_seconds: default_llm_guard_timeout(),
@@ -661,6 +666,58 @@ impl Default for MonitoringConfig {
 }
 
 fn default_max_prompt_chars() -> usize { 256 }
+
+/// Process access-control list for the LLM Guard reverse proxy.
+///
+/// Because the guard resolves the *local process* behind every request
+/// (PID / exe / cmdline, plus an attributed agent name — see
+/// [`super::proxy::provenance`]), it can gate access on **which process** is
+/// calling, not just on credentials. Patterns are case-insensitive substrings
+/// matched against a haystack of `name + exe + cmdline + agent_name`, mirroring
+/// the agent-signature matching used elsewhere.
+///
+/// `deny` always wins over `allow`. When neither matches, `default` decides:
+/// `"deny"` = allowlist semantics (only listed callers pass), `"allow"` =
+/// denylist semantics (everything except blocked callers passes).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessAclConfig {
+    /// Enforce process-based access control. When false the guard still
+    /// records provenance on events but never blocks on it.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Decision when no allow/deny rule matches: `"deny"` (allowlist) or
+    /// `"allow"` (denylist).
+    #[serde(default = "default_acl_default")]
+    pub default: String,
+    /// Reject callers whose process could not be resolved to a PID. On
+    /// non-Linux hosts provenance is peer-address-only today, so leaving this
+    /// false avoids blocking every request there. Linux resolves loopback
+    /// callers without elevated privileges.
+    #[serde(default)]
+    pub block_unresolved: bool,
+    /// Allow rules — a caller is permitted if its haystack contains ANY of
+    /// these substrings (e.g. `"claude-code"`, `"/usr/local/bin/ollama"`).
+    #[serde(default)]
+    pub allow: Vec<String>,
+    /// Deny rules — a caller is rejected if its haystack contains ANY of
+    /// these substrings. Takes precedence over `allow`.
+    #[serde(default)]
+    pub deny: Vec<String>,
+}
+
+impl Default for ProcessAclConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            default: default_acl_default(),
+            block_unresolved: false,
+            allow: Vec::new(),
+            deny: Vec::new(),
+        }
+    }
+}
+
+fn default_acl_default() -> String { "deny".into() }
 
 // ── OpenShell audit-log ingest (NVIDIA OpenShell Gateway OCSF export) ──
 
