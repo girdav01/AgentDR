@@ -48,6 +48,19 @@ export interface MonitoringConfig {
   max_prompt_chars: number;
 }
 
+export interface ProcessAclConfig {
+  /** Enforce process-based access control on callers. */
+  enabled: boolean;
+  /** Decision when no rule matches: "deny" (allowlist) | "allow" (denylist). */
+  default: string;
+  /** Reject callers whose process (PID) could not be resolved. */
+  block_unresolved: boolean;
+  /** Allow patterns — caller passes if its exe/cmdline/agent matches ANY. */
+  allow: string[];
+  /** Deny patterns — caller rejected if it matches ANY (deny wins). */
+  deny: string[];
+}
+
 export interface LlmGuardConfig {
   enabled: boolean;
   listen_address: string;
@@ -57,6 +70,7 @@ export interface LlmGuardConfig {
   jwt: JwtConfig;
   rate_limits: RateLimitConfig;
   monitoring: MonitoringConfig;
+  process_acl: ProcessAclConfig;
   health_check_interval_seconds: number;
   max_body_bytes: number;
   upstream_timeout_seconds: number;
@@ -101,6 +115,13 @@ export function defaultConfig(): LlmGuardConfig {
       block_on_injection: false,
       block_on_pii: false,
       max_prompt_chars: 2000,
+    },
+    process_acl: {
+      enabled: false,
+      default: 'deny',
+      block_unresolved: false,
+      allow: [],
+      deny: [],
     },
     health_check_interval_seconds: 30,
     max_body_bytes: 8 * 1024 * 1024,
@@ -153,6 +174,16 @@ export function mergeConfig(base: LlmGuardConfig, incoming: Partial<LlmGuardConf
     jwt: { ...base.jwt, ...(incoming.jwt ?? {}) },
     rate_limits: { ...base.rate_limits, ...(incoming.rate_limits ?? {}) },
     monitoring: { ...base.monitoring, ...(incoming.monitoring ?? {}) },
+    process_acl: {
+      ...base.process_acl,
+      ...(incoming.process_acl ?? {}),
+      allow: Array.isArray(incoming.process_acl?.allow)
+        ? incoming.process_acl!.allow.filter((s) => typeof s === 'string')
+        : base.process_acl.allow,
+      deny: Array.isArray(incoming.process_acl?.deny)
+        ? incoming.process_acl!.deny.filter((s) => typeof s === 'string')
+        : base.process_acl.deny,
+    },
     health_check_interval_seconds:
       incoming.health_check_interval_seconds ?? base.health_check_interval_seconds,
     max_body_bytes: incoming.max_body_bytes ?? base.max_body_bytes,

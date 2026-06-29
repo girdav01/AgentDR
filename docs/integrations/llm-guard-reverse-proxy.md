@@ -85,6 +85,7 @@ usage and backend health in real time (see
 | **Require an API key** from callers | `llm_guard.auth_tokens = ["<key>"]` → callers send `Authorization: Bearer <key>` |
 | **Verify JWTs** instead of static keys | `[llm_guard.jwt] enabled = true`, `secret = "<hs256>"` |
 | **Throttle abusive callers** | `[llm_guard.rate_limits] enabled = true`, tune `requests_per_minute` / `burst` |
+| **Restrict which processes may call** the models | `[llm_guard.process_acl] enabled = true` — apply a [preset](#process-access-control) or set `allow` / `deny` patterns |
 | **Front several backends** (Ollama + LM Studio + llama.cpp) | add one `[[llm_guard.backends]]` block per backend with distinct `route_prefix` |
 | **Guard outbound agent egress** too | enable the separate `[proxy]` forward proxy (section 1) |
 
@@ -207,13 +208,16 @@ max_prompt_chars = 512       # prompt chars retained in events (never the full p
 ### Request lifecycle
 
 ```
-client ─▶ [provenance] ─▶ [auth 401] ─▶ [rate-limit 429] ─▶ [route 502]
+client ─▶ [provenance] ─▶ [process ACL 403] ─▶ [auth 401] ─▶ [rate-limit 429] ─▶ [route 502]
        ─▶ [read body ≤max 413] ─▶ [inspect prompt → 403 if block_on_*]
        ─▶ forward to backend ─▶ [read response] ─▶ [extract token usage]
        ─▶ emit observation ─▶ relay response to client
 ```
 
 - **Routing** — e.g. `POST /ollama/api/generate` → `http://127.0.0.1:11434/api/generate`.
+- **Process ACL** — gate on *which local process* (or attributed AI agent) is
+  calling, before auth. A denied caller gets **`403`** and an `identity`
+  Detection Finding. See [Process access control](#process-access-control) below.
 - **Auth** — missing/invalid credential → **`401 Unauthorized`**. Empty
   `auth_tokens` + `jwt.enabled = false` ⇒ observe-only (nothing rejected).
 - **Rate limit** — per-key sliding window → **`429`**.
@@ -226,6 +230,49 @@ client ─▶ [provenance] ─▶ [auth 401] ─▶ [rate-limit 429] ─▶ [rou
 - **Token usage** — parsed from the upstream response (OpenAI
   `usage.{prompt,completion,total}_tokens`, Ollama `prompt_eval_count` /
   `eval_count`) and attached to an `inference` observation event.
+
+### Process access control
+
+The guard resolves the **local process** behind every request — PID, executable
+path, command line — and attributes it to a known AI agent (reusing the same
+`agent-signatures` matching as the rest of AgentDR). With `[llm_guard.process_acl]`
+you can turn that into an access decision, so only the processes you trust may
+reach your local models:
+
+```toml
+[llm_guard.process_acl]
+enabled = true
+default = "deny"            # "deny" = allowlist, "allow" = denylist
+block_unresolved = false    # reject callers with no resolvable PID (Linux-only resolution)
+allow = ["claude-code", "cursor", "ollama"]
+deny  = ["curl", "wget", "python"]
+```
+
+- Patterns are **case-insensitive substrings** matched against a haystack of
+  `name + exe + cmdline + agent_name`.
+- **`deny` always wins** over `allow`. When neither matches, `default` decides.
+- A blocked caller gets **`403`** plus an `ai_operation = identity` Detection
+  Finding (`status_id` BLOCKED) in the event stream / dashboard.
+- **Linux-only enforcement today.** Process resolution parses `/proc`; on
+  macOS/Windows the caller is peer-address-only, so keep `block_unresolved = false`
+  there (an allowlist would otherwise reject everything). This is defence in
+  depth — pair it with `auth_tokens`, since `name`/`cmdline` are spoofable
+  (the `exe` symlink is sturdier).
+
+**Curated presets.** The dashboard's LLM Guard settings page ships ready-made
+rule profiles you can apply and then fine-tune (see
+`adr_dashboard/nextjs_space/lib/llm-guard-presets.ts`):
+
+| Preset | Kind | What it does |
+|--------|------|--------------|
+| Observe only | off | Record provenance, never block (baseline). |
+| Allow known AI coding agents only | allowlist | Claude Code, Cursor, Codex, Aider, Continue, Cline, … |
+| Allow first-party LLM apps | allowlist | Ollama, LM Studio, llama.cpp, Open WebUI, Jan, Msty, … |
+| Developer workstation | allowlist | Union of coding agents + LLM apps (recommended). |
+| Block scripting interpreters | denylist | python, node, ruby, bash, powershell, … |
+| Block data-transfer tooling | denylist | curl, wget, netcat, socat, scp, rsync, … |
+| Block browsers | denylist | Chrome, Firefox, Edge, Safari, Brave, … |
+| Strict lockdown | allowlist | default-deny + block unresolved; edit the allowlist. |
 
 ### Health checks
 

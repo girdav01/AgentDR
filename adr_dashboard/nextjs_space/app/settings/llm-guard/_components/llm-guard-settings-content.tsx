@@ -8,8 +8,10 @@ import { motion } from 'framer-motion';
 import {
   ShieldHalf, Server, KeyRound, Gauge, Eye, Plus, Trash2, Save,
   Check, X, AlertTriangle, Loader2, ArrowLeft, Lock, Activity,
+  Fingerprint, Wand2,
 } from 'lucide-react';
 import type { LlmGuardConfig, BackendConfig } from '@/lib/llm-guard-config';
+import { LLM_GUARD_ACL_PRESETS, presetById } from '@/lib/llm-guard-presets';
 
 const MASK = '••••••••';
 const BACKEND_KINDS = ['ollama', 'lmstudio', 'llamacpp'];
@@ -112,6 +114,19 @@ export default function LlmGuardSettingsContent() {
     setCfg((c) => (c ? { ...c, rate_limits: { ...c.rate_limits, ...p } } : c));
   const patchJwt = (p: Partial<LlmGuardConfig['jwt']>) =>
     setCfg((c) => (c ? { ...c, jwt: { ...c.jwt, ...p } } : c));
+  const patchAcl = (p: Partial<LlmGuardConfig['process_acl']>) =>
+    setCfg((c) => (c ? { ...c, process_acl: { ...c.process_acl, ...p } } : c));
+
+  // Apply a curated rule preset, replacing the ACL block wholesale.
+  const applyPreset = (id: string) => {
+    const preset = presetById(id);
+    if (!preset) return;
+    setCfg((c) => (c ? { ...c, process_acl: { ...preset.acl } } : c));
+    flash(`Applied preset: ${preset.name}`);
+  };
+  // Edit a newline-separated pattern list (allow / deny).
+  const patchAclList = (key: 'allow' | 'deny', text: string) =>
+    patchAcl({ [key]: text.split('\n').map((s) => s.trim()).filter(Boolean) } as Partial<LlmGuardConfig['process_acl']>);
 
   const updateBackend = (i: number, p: Partial<BackendConfig>) =>
     setCfg((c) => {
@@ -349,6 +364,104 @@ export default function LlmGuardSettingsContent() {
             <Field label="Max prompt characters retained" hint="Truncated in events for privacy.">
               <input type="number" min={0} className={inputCls} value={cfg.monitoring.max_prompt_chars}
                 onChange={(e) => patchMonitoring({ max_prompt_chars: parseInt(e.target.value || '0', 10) })} disabled={!cfg.monitoring.enabled} />
+            </Field>
+          </div>
+        </Card>
+
+        {/* ── Process access control ── */}
+        <Card
+          icon={Fingerprint}
+          title="Process access control"
+          desc="Gate requests on which local process (or attributed AI agent) is calling. Patterns are case-insensitive substrings matched against the caller's name / exe / cmdline / agent."
+        >
+          <ToggleRow
+            label="Enforce process access control"
+            hint="When off, the guard records caller provenance on events but never blocks on it."
+            checked={cfg.process_acl.enabled}
+            onChange={(v) => patchAcl({ enabled: v })}
+          />
+
+          {/* Preset picker */}
+          <div className="rounded-lg border border-border bg-background/50 p-3 space-y-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <Wand2 className="w-4 h-4 text-primary" /> Start from a rule preset
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Apply a curated profile, then fine-tune the lists below. Applying a preset replaces the current rules.
+            </p>
+            <div className="grid sm:grid-cols-2 gap-2 pt-1">
+              {LLM_GUARD_ACL_PRESETS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => applyPreset(p.id)}
+                  title={p.detail}
+                  className="text-left rounded-lg border border-border bg-card p-3 hover:border-primary/50 transition-colors"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium text-foreground">{p.name}</span>
+                    <span
+                      className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                        p.kind === 'allowlist'
+                          ? 'bg-emerald-500/15 text-emerald-400'
+                          : p.kind === 'denylist'
+                          ? 'bg-amber-500/15 text-amber-400'
+                          : 'bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      {p.kind}
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">{p.description}</div>
+                  {p.recommended && (
+                    <div className="text-[10px] text-primary mt-1 font-medium">Recommended</div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-4 pt-2">
+            <Field label="Default decision" hint="When no rule matches.">
+              <select
+                className={inputCls}
+                value={cfg.process_acl.default}
+                onChange={(e) => patchAcl({ default: e.target.value })}
+                disabled={!cfg.process_acl.enabled}
+              >
+                <option value="deny">deny — allowlist (only listed callers pass)</option>
+                <option value="allow">allow — denylist (block only listed callers)</option>
+              </select>
+            </Field>
+            <div className="flex items-end">
+              <ToggleRow
+                label="Block unresolved callers"
+                hint="Reject callers with no resolvable PID. Linux-only resolution today — leave off on macOS/Windows."
+                checked={cfg.process_acl.block_unresolved}
+                onChange={(v) => patchAcl({ block_unresolved: v })}
+                disabled={!cfg.process_acl.enabled}
+              />
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-4 pt-1">
+            <Field label="Allow patterns" hint="One per line. Caller passes if it matches ANY.">
+              <textarea
+                className={`${inputCls} font-mono min-h-[120px]`}
+                value={cfg.process_acl.allow.join('\n')}
+                onChange={(e) => patchAclList('allow', e.target.value)}
+                placeholder={'claude-code\ncursor\n/usr/local/bin/ollama'}
+                disabled={!cfg.process_acl.enabled}
+              />
+            </Field>
+            <Field label="Deny patterns" hint="One per line. Rejected if it matches ANY (deny wins).">
+              <textarea
+                className={`${inputCls} font-mono min-h-[120px]`}
+                value={cfg.process_acl.deny.join('\n')}
+                onChange={(e) => patchAclList('deny', e.target.value)}
+                placeholder={'curl\nwget\npython'}
+                disabled={!cfg.process_acl.enabled}
+              />
             </Field>
           </div>
         </Card>

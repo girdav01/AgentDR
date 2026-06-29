@@ -97,6 +97,19 @@ block_on_injection = false
 block_on_pii = false
 max_prompt_chars = 512
 
+# Process access control — gate on WHICH local process (or attributed AI agent)
+# may call the local models. Patterns are case-insensitive substrings matched
+# against the caller's name / exe / cmdline / agent. `deny` wins over `allow`;
+# `default` ("deny" = allowlist, "allow" = denylist) decides when neither hits.
+# Disabled by default. Process resolution is Linux-only today, so leave
+# block_unresolved = false on Windows/macOS. Example (allow AI coding agents):
+[llm_guard.process_acl]
+enabled = false
+default = "deny"
+block_unresolved = false
+allow = []   # e.g. ["claude-code", "cursor", "ollama"]
+deny = []    # e.g. ["curl", "wget", "python"]
+
 # NVIDIA OpenShell Gateway OCSF audit-log ingest (opt-in).
 # Set ocsf_json_enabled on the OpenShell side, then point log_glob at its export.
 [openshell]

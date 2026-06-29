@@ -33,7 +33,7 @@ use crate::models::*;
 use super::auth::{AuthOutcome, Authenticator};
 use super::health::{self, HealthRegistry};
 use super::monitor;
-use super::provenance::{self, Provenance};
+use super::provenance::{self, AclDecision, Provenance};
 use super::rate_limit::KeyedRateLimiter;
 use super::InlineProxy;
 use axum::{
@@ -77,6 +77,7 @@ pub struct Guard {
     auth: Authenticator,
     limiter: KeyedRateLimiter,
     monitoring: crate::config::MonitoringConfig,
+    acl: crate::config::ProcessAclConfig,
     max_body: usize,
     client: reqwest::Client,
     health: Arc<HealthRegistry>,
@@ -111,6 +112,7 @@ pub async fn serve(
         auth: Authenticator::new(cfg.auth_tokens.clone(), cfg.jwt.clone()),
         limiter: KeyedRateLimiter::new(&cfg.rate_limits),
         monitoring: cfg.monitoring.clone(),
+        acl: cfg.process_acl.clone(),
         max_body: cfg.max_body_bytes,
         client: client.clone(),
         health: health.clone(),
@@ -203,6 +205,30 @@ async fn proxy_handler(
     // ── Caller provenance + agent attribution ──
     let prov = provenance::resolve(peer);
     let agent = identify_agent(&prov.haystack());
+
+    // ── 0) Process access control ──
+    // Gate on *which local process* is calling (allow/deny lists over the
+    // resolved exe / cmdline / attributed agent), before spending work on
+    // auth or body inspection.
+    if let AclDecision::Deny(reason) =
+        guard.acl.evaluate(&prov, agent.as_ref().map(|a| a.name.as_str()))
+    {
+        guard.emit_block(
+            "llm_guard_process_denied",
+            AiOperation::Identity,
+            "high",
+            4,
+            &format!("llm-guard: process denied ({reason})"),
+            &prov,
+            agent.as_ref(),
+            None,
+        );
+        return (
+            StatusCode::FORBIDDEN,
+            "forbidden: caller process not permitted",
+        )
+            .into_response();
+    }
 
     // ── 1) Authentication ──
     let bearer = bearer_from(&headers, "authorization");
