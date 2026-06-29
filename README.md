@@ -77,6 +77,7 @@ adr-agent mcp wrap --name x -- <cmd>    # stdio-proxy + record an MCP server
 adr-agent otlp                          # standalone OTLP collector
 adr-agent policy list | policy test     # inspect / dry-run the policy pack
 adr-agent proxy --allow anthropic.com   # standalone inline blocking proxy
+adr-agent llm-guard                     # reverse proxy fronting local models ([llm_guard])
 adr-agent shell wrap --name s -- <cmd>  # record an agent shell session
 ```
 
@@ -165,6 +166,7 @@ normalized `EventRecord`.
 | 12 | **Credential attribution** | joins a credential-file read to the agent process responsible | 10-minute rolling window of agent `process_started` events | enriches the `AITF-DET-018` alert with a `candidate_agents` list |
 | 13 | **Self-protection / watchdog** | hashes AgentDR's own config, the rule pack, the binary, and every installed runtime-hook config; fires when an AgentDR marker is removed or a tracked file disappears | periodic SHA-256 + marker presence check | `ai_operation compliance_violation` (Compliance Finding `2003`, critical) on evasion, optional self-heal that re-installs the hook |
 | 14 | **Auto-discovery** | finds every AI agent on the host (PATH, install locations, hook configs, MCP entries, running PIDs) and decides what to monitor per `[discovery].mode` (interactive / policy / automatic / off) | runs on install, on startup, on schedule, on demand | hook installs + `ai_operation agent_action` (`9001`) `discovery_scan_completed` events |
+| 15 | **LLM Guard reverse proxy** | every request to a fronted local model backend (Ollama, LM Studio, llama.cpp): caller identity, prompt-injection / PII matches in the body, upstream status, and token usage | terminating HTTP reverse proxy (`[llm_guard]`, or `adr-agent llm-guard`) that routes by `route_prefix`, authenticates + rate-limits callers, and reads request/response bodies | `inference` (API Activity `6003`) per request; prompt-injection / PII raise a `prompt_injection` / `data_exfiltration` Detection Finding (`2004`); blocked calls carry `status_id` BLOCKED |
 
 ### From observation to a normalized event
 

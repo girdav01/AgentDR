@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import { useFetch } from '@/hooks/use-fetch';
 import { motion } from 'framer-motion';
@@ -8,7 +9,7 @@ import {
   Settings, Building2, Users, HardDrive, Shield, Plus, Trash2,
   Save, User, Crown, ChevronDown, ChevronUp, Database, Archive,
   AlertTriangle, Check, X, Edit2, RefreshCw, FileCheck, Download,
-  ShieldCheck, Clock, Globe,
+  ShieldCheck, Clock, Globe, ShieldHalf, ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -256,6 +257,25 @@ export default function SettingsContent() {
           </button>
         ))}
       </div>
+
+      {/* LLM Guard — lives on its own page; surface it from the settings hub */}
+      <Link
+        href="/settings/llm-guard"
+        className="flex items-center justify-between gap-4 rounded-xl border border-border bg-card p-4 hover:border-primary/50 transition-colors group"
+      >
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg bg-primary/10 p-2 text-primary">
+            <ShieldHalf className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-sm font-semibold text-foreground">LLM Guard</div>
+            <div className="text-xs text-muted-foreground">
+              Configure the reverse proxy fronting local models — backends, auth, rate limits, and prompt-injection / PII inspection
+            </div>
+          </div>
+        </div>
+        <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
+      </Link>
 
       {/* General Tab */}
       {activeTab === 'general' && (
