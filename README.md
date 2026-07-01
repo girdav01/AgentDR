@@ -407,7 +407,7 @@ Data-plane events flow through the standard OCSF categories (2–6); only the co
 
 ### Semantic-convention namespaces
 
-AITF extends the OpenTelemetry GenAI conventions with dedicated namespaces; AgentDR emits attributes under: `gen_ai.*`, `mcp.*`, `skill.*`, `rag.*`, `security.*`, `compliance.*`, `cost.*`, `quality.*`, `supply_chain.*`, `identity.*`, `model_ops.*`, `asset.*`, `drift.*`, and `memory.security.*` (memory poisoning / integrity).
+AITF extends the OpenTelemetry GenAI conventions with dedicated namespaces; AgentDR emits attributes under: `gen_ai.*`, `agent.*`, `mcp.*`, `skill.*`, `rag.*`, `security.*`, `compliance.*`, `cost.*`, `quality.*`, `supply_chain.*`, `identity.*`, `model_ops.*`, `asset.*`, `drift.*`, `guardrail.*`, `memory.*`, and `memory.security.*` (memory poisoning / integrity) — the full AITF 0.2 namespace set.
 
 ### Delegation object (AITF 0.2)
 
