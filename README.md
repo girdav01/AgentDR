@@ -409,6 +409,10 @@ Data-plane events flow through the standard OCSF categories (2–6); only the co
 
 AITF extends the OpenTelemetry GenAI conventions with dedicated namespaces; AgentDR emits attributes under: `gen_ai.*`, `agent.*`, `mcp.*`, `skill.*`, `rag.*`, `security.*`, `compliance.*`, `cost.*`, `quality.*`, `supply_chain.*`, `identity.*`, `model_ops.*`, `asset.*`, `drift.*`, `guardrail.*`, `memory.*`, and `memory.security.*` (memory poisoning / integrity) — the full AITF 0.2 namespace set.
 
+### `ai_agent` object (AITF 0.2)
+
+Every AI-attributable event carries a structured **`ai_agent` object** (AITF 0.2 / provisional OCSF PR [#1641](https://github.com/ocsf/ocsf-schema/pull/1641)) grouping the agent's identity: `uid` (**required** — stable logical agent id), `instance_uid` (running instance / conversation id), `name`, `type` + `type_id` (framework caption + normalized enum), `ai_model` (backing model), `version`, and `charter`. AgentDR builds it from the flat `agent_name` / `agent_framework` / `model` fields (kept alongside for backward compatibility): the `uid` comes from `gen_ai.agent.id` when present, else a deterministic FNV-1a hash of the agent identity so the same agent keeps a stable id across restarts and hosts. The OTLP ingest sources `instance_uid` from `gen_ai.conversation.id` / `gen_ai.thread.id` / `session.id`; the reverse proxy uses the caller PID.
+
 ### Delegation object (AITF 0.2)
 
 Agent-to-agent authorization is captured both as the `delegation` `ai_operation` (proposed OCSF class `9002`) and as a structured **`delegation` object** on the event — `grantor`, `grantee`, `scope`, `action` (grant/revoke), and `ttl_seconds` — populated from `delegation.*` / `gen_ai.delegation.*` span attributes by the OTLP ingest.
@@ -419,7 +423,7 @@ Agent-to-agent authorization is captured both as the `delegation` `ai_operation`
 
 ### AI-specific fields
 
-`provider` (OpenAI, Anthropic, Google, Azure OpenAI, DeepSeek, Mistral, Ollama, Microsoft Copilot, ServiceNow, SAP AI, Browserbase, ...), `model`, `agent_name`, `agent_framework`, `tool_name`, `mcp_server`, `actor` (`{user, pid}`), `token_usage`, `cost_info`.
+`provider` (OpenAI, Anthropic, Google, Azure OpenAI, DeepSeek, Mistral, Ollama, Microsoft Copilot, ServiceNow, SAP AI, Browserbase, ...), `model`, `agent_name`, `agent_framework`, `ai_agent` (the AITF 0.2 structured agent-identity object — see above), `tool_name`, `mcp_server`, `actor` (`{user, pid}`), `token_usage`, `cost_info`.
 
 ### Compliance / security finding fields
 

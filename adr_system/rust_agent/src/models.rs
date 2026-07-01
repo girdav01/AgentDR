@@ -450,6 +450,14 @@ pub struct EventRecord {
     pub agent_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_framework: Option<String>,
+    /// AITF 0.2 `ai_agent` object (provisional, OCSF PR #1641) — structured
+    /// agent identity carried on every AI-attributable event: `uid` (required,
+    /// stable logical id), `instance_uid`, `name`, `type`, `type_id`,
+    /// `ai_model`, `version`, `charter`. Built from the flat `agent_name` /
+    /// `agent_framework` / `model` fields (kept for backward compatibility) via
+    /// [`EventRecord::build_ai_agent`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ai_agent: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -494,6 +502,7 @@ impl EventRecord {
             model: None,
             agent_name: None,
             agent_framework: None,
+            ai_agent: None,
             tool_name: None,
             mcp_server: None,
             actor: None,
@@ -515,5 +524,156 @@ impl EventRecord {
         self.class_uid = Some(class_uid);
         self.type_uid = Some(class_uid * 100 + activity_id);
         self.ai_operation = Some(op.as_str().to_string());
+    }
+
+    /// Build the AITF 0.2 `ai_agent` object from the flat agent fields on this
+    /// event. Called after `agent_name` / `agent_framework` / `model` are set.
+    ///
+    /// * `uid` — `explicit_uid` when known (e.g. `gen_ai.agent.id`), else a
+    ///   deterministic [`stable_agent_uid`] of the name (+framework) so the
+    ///   same logical agent keeps a stable id across restarts / hosts.
+    /// * `instance_uid` — restart-sensitive running instance (conversation /
+    ///   session id), when available.
+    /// * `type` / `type_id` — framework caption + normalized enum.
+    /// * `ai_model` — the backing model.
+    ///
+    /// No-op when there is no agent identity to describe.
+    pub fn build_ai_agent(&mut self, explicit_uid: Option<&str>, instance_uid: Option<&str>) {
+        let has_identity = explicit_uid.is_some()
+            || self.agent_name.is_some()
+            || self.agent_framework.is_some();
+        if !has_identity {
+            return;
+        }
+
+        let uid = match explicit_uid {
+            Some(u) if !u.is_empty() => u.to_string(),
+            _ => stable_agent_uid(self.agent_name.as_deref(), self.agent_framework.as_deref()),
+        };
+
+        let mut obj = serde_json::Map::new();
+        obj.insert("uid".into(), serde_json::Value::String(uid));
+        if let Some(iid) = instance_uid.filter(|s| !s.is_empty()) {
+            obj.insert("instance_uid".into(), serde_json::Value::String(iid.to_string()));
+        }
+        if let Some(name) = &self.agent_name {
+            obj.insert("name".into(), serde_json::Value::String(name.clone()));
+        }
+        if let Some(fw) = &self.agent_framework {
+            obj.insert("type".into(), serde_json::Value::String(fw.clone()));
+            obj.insert("type_id".into(), serde_json::Value::from(framework_type_id(fw)));
+        }
+        if let Some(model) = &self.model {
+            obj.insert("ai_model".into(), serde_json::Value::String(model.clone()));
+        }
+        self.ai_agent = Some(serde_json::Value::Object(obj));
+    }
+}
+
+/// Deterministic, stable logical agent `uid` derived from the agent name (and
+/// framework) when no explicit id is provided by telemetry. Uses FNV-1a so the
+/// same identity yields the same `agent:<hex>` id across restarts and hosts.
+pub fn stable_agent_uid(name: Option<&str>, framework: Option<&str>) -> String {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let feed = |h: &mut u64, s: &str| {
+        for b in s.bytes() {
+            *h ^= b as u64;
+            *h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    };
+    feed(&mut h, name.unwrap_or("unknown"));
+    feed(&mut h, "|");
+    feed(&mut h, framework.unwrap_or(""));
+    format!("agent:{h:016x}")
+}
+
+/// Normalize an agent framework string to the AITF `ai_agent.type_id` enum
+/// (mirrors OCSF PR #1641; `0` = Unknown, `99` = Other). The specific codes
+/// track the ratified enum once #1641 lands; today this is a best-effort
+/// normalization over the frameworks AgentDR recognizes.
+pub fn framework_type_id(framework: &str) -> u32 {
+    let f = framework.to_ascii_lowercase();
+    if f.is_empty() {
+        0
+    } else if f.contains("langgraph") {
+        2
+    } else if f.contains("langchain") {
+        1
+    } else if f.contains("llamaindex") || f.contains("llama-index") || f.contains("llama_index") {
+        3
+    } else if f.contains("autogen") {
+        4
+    } else if f.contains("crewai") || f.contains("crew-ai") {
+        5
+    } else if f.contains("semantic") && f.contains("kernel") {
+        6
+    } else if f.contains("pydantic") {
+        7
+    } else if f.contains("google") && f.contains("adk") {
+        8
+    } else if f.contains("strands") {
+        9
+    } else if f.contains("openai") && (f.contains("agent") || f.contains("assistant")) {
+        10
+    } else if f.contains("anthropic") || f.contains("claude") {
+        11
+    } else {
+        99
+    }
+}
+
+#[cfg(test)]
+mod ai_agent_tests {
+    use super::*;
+
+    #[test]
+    fn stable_uid_is_deterministic_and_identity_scoped() {
+        let a = stable_agent_uid(Some("claude-code"), Some("anthropic"));
+        let b = stable_agent_uid(Some("claude-code"), Some("anthropic"));
+        assert_eq!(a, b, "same identity → same uid");
+        assert!(a.starts_with("agent:"));
+        assert_ne!(a, stable_agent_uid(Some("cursor"), Some("anthropic")));
+        assert_ne!(a, stable_agent_uid(Some("claude-code"), Some("langchain")));
+    }
+
+    #[test]
+    fn framework_type_id_normalizes_known_and_unknown() {
+        assert_eq!(framework_type_id(""), 0);
+        assert_eq!(framework_type_id("LangChain"), 1);
+        assert_eq!(framework_type_id("langgraph"), 2); // langgraph before langchain
+        assert_eq!(framework_type_id("LlamaIndex"), 3);
+        assert_eq!(framework_type_id("some-bespoke-framework"), 99);
+    }
+
+    #[test]
+    fn build_ai_agent_from_flat_fields() {
+        let mut ev = EventRecord::new("otlp_span", serde_json::json!({}), "low");
+        ev.agent_name = Some("claude-code".into());
+        ev.agent_framework = Some("anthropic".into());
+        ev.model = Some("claude-opus-4".into());
+        ev.build_ai_agent(None, Some("conv-123"));
+
+        let a = ev.ai_agent.expect("ai_agent built");
+        assert_eq!(a["name"], "claude-code");
+        assert_eq!(a["type"], "anthropic");
+        assert_eq!(a["type_id"], 11);
+        assert_eq!(a["ai_model"], "claude-opus-4");
+        assert_eq!(a["instance_uid"], "conv-123");
+        assert!(a["uid"].as_str().unwrap().starts_with("agent:"));
+    }
+
+    #[test]
+    fn explicit_uid_wins_over_derived() {
+        let mut ev = EventRecord::new("otlp_span", serde_json::json!({}), "low");
+        ev.agent_name = Some("worker".into());
+        ev.build_ai_agent(Some("agent-abc-123"), None);
+        assert_eq!(ev.ai_agent.unwrap()["uid"], "agent-abc-123");
+    }
+
+    #[test]
+    fn no_identity_is_noop() {
+        let mut ev = EventRecord::new("proxy_request", serde_json::json!({}), "low");
+        ev.build_ai_agent(None, None);
+        assert!(ev.ai_agent.is_none());
     }
 }
