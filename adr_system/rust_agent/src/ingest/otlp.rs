@@ -434,8 +434,9 @@ fn apply_common_attrs(ev: &mut EventRecord, attrs: &Attrs, redact: bool) {
         }));
     }
 
+    // `gen_ai.agent.id` is the *agent's* identity (→ ai_agent.uid), not the
+    // human user; keep it out of actor.user.
     let user = attrs.get("user.name")
-        .or_else(|| attrs.get("gen_ai.agent.id"))
         .or_else(|| attrs.get("enduser.id"));
     let host = attrs.get("host.name");
     if user.is_some() || host.is_some() {
@@ -444,6 +445,17 @@ fn apply_common_attrs(ev: &mut EventRecord, attrs: &Attrs, redact: bool) {
             "host": host.cloned(),
         }));
     }
+
+    // AITF 0.2 ai_agent object (provisional, OCSF PR #1641). uid from the
+    // explicit agent id when present; instance_uid from the conversation /
+    // session / thread id.
+    let agent_uid = attrs.get("gen_ai.agent.id").map(String::as_str);
+    let instance_uid = attrs
+        .get("gen_ai.conversation.id")
+        .or_else(|| attrs.get("gen_ai.thread.id"))
+        .or_else(|| attrs.get("session.id"))
+        .map(String::as_str);
+    ev.build_ai_agent(agent_uid, instance_uid);
 
     // AITF 0.2 delegation object: grantor/grantee/scope/action/ttl_seconds.
     let dget = |k1: &str, k2: &str| attrs.get(k1).or_else(|| attrs.get(k2)).cloned();

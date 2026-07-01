@@ -290,6 +290,10 @@ impl InlineProxy {
             ev.agent_detected = Some(a.name.clone());
             ev.agent_name = Some(a.name.clone());
             ev.agent_framework = Some(a.framework.clone());
+            // AITF 0.2 ai_agent object — the caller PID identifies the running
+            // instance; the uid is derived from the attributed agent identity.
+            let instance = prov.and_then(|p| p.pid).map(|pid| format!("pid:{pid}"));
+            ev.build_ai_agent(None, instance.as_deref());
         }
     }
 
