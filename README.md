@@ -12,9 +12,7 @@ AgentDR/
 │   ├── rust_agent/              ← Endpoint monitoring agent (Rust) — reference impl
 │   │   ├── src/                 ← Monitors, ingest, exporters, policy, proxy, CLI
 │   │   └── Cargo.toml
-│   ├── cosai-community/         ← Shared CoSAI/AITF rule pack (signatures, endpoints, policies)
-│   └── archive/
-│       └── python-agent/        ← Original Python prototype (archived, not maintained)
+│   └── cosai-community/         ← Shared CoSAI/AITF rule pack (signatures, endpoints, policies)
 ├── adr_dashboard/
 │   └── nextjs_space/            ← Analyst dashboard (Next.js 14 + Prisma + Postgres)
 ├── packaging/                   ← Signed installers: macOS .pkg, Windows MSI, Linux deb/rpm
@@ -25,9 +23,8 @@ AgentDR/
 > **Note on the Python agent.** AgentDR began as a Python prototype. The
 > endpoint agent has since been rewritten in **Rust** — it is faster,
 > uses < 40 MB resident, has no interpreter dependency, and is the only
-> actively maintained agent. The Python prototype is preserved under
-> [`adr_system/archive/python-agent/`](adr_system/archive/python-agent/)
-> for historical reference and is not built, tested, or shipped.
+> agent. The original Python prototype has been removed; its history remains
+> available in the git log.
 
 ---
 
